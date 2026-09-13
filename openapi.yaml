@@ -2769,6 +2769,16 @@ components:
 
     Workspace:
       type: object
+      required:
+        - id
+        - name
+        - description
+        - status
+        - settings
+        - public_sharing_enabled
+        - guest_access_enabled
+        - created_at
+        - updated_at
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
@@ -2940,6 +2950,15 @@ components:
 
     Space:
       type: object
+      required:
+        - id
+        - workspace_id
+        - name
+        - description
+        - is_private
+        - is_default
+        - created_at
+        - updated_at
       properties:
         id: { type: string, format: uuid }
         workspace_id: { type: string, format: uuid }
@@ -3066,6 +3085,16 @@ components:
 
     Page:
       type: object
+      required:
+        - id
+        - workspace_id
+        - title
+        - description
+        - rank
+        - props
+        - version
+        - created_at
+        - updated_at
       properties:
         id: { type: string, format: uuid }
         workspace_id: { type: string, format: uuid }

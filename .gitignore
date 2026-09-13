@@ -7,5 +7,4 @@ bin/
 .env
 
 # Vite output (keep directory)
-cmd/web/static/**
-!cmd/web/static/.gitkeep
+cmd/web/static/
