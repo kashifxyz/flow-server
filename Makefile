@@ -16,7 +16,8 @@ fmt:
 	gofmt -w .
 
 migrate:
-	@echo "migrations are not configured yet"
+	@echo "Apply migrations locally with:"
+	@echo "  goose -dir migrations postgres \"host=localhost port=5432 dbname=flow sslmode=disable\" up"
 
 generate:
 	@echo "code generation is not configured yet"
