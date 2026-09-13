@@ -37,7 +37,7 @@ CREATE TABLE fields (
   result_options jsonb,
   compute_error text,
   last_computed_at timestamptz,
-  precision integer,
+  numeric_precision integer,
   currency text,
   duration_format text,
   rating_max integer,
@@ -91,7 +91,7 @@ CREATE TABLE relation_constraints (
   from_database_id uuid NOT NULL REFERENCES databases (id) ON DELETE CASCADE,
   to_database_id uuid NOT NULL REFERENCES databases (id) ON DELETE CASCADE,
   allow_multiple boolean NOT NULL DEFAULT true,
-  symmetric boolean NOT NULL DEFAULT false
+  is_symmetric boolean NOT NULL DEFAULT false
 );
 
 CREATE INDEX relation_constraints_to_database_idx ON relation_constraints (to_database_id);
