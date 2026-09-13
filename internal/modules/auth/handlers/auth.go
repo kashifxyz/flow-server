@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/kashifxyz/flow-server/internal/auth"
-	"github.com/kashifxyz/flow-server/internal/modules/users/models"
-	"github.com/kashifxyz/flow-server/internal/modules/users/services"
+	"github.com/kashifxyz/flow-server/internal/modules/auth/models"
+	"github.com/kashifxyz/flow-server/internal/modules/auth/services"
 	"github.com/kashifxyz/flow-server/internal/utils"
 	"github.com/rs/zerolog"
 )

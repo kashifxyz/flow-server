@@ -1,0 +1,3934 @@
+openapi: 3.1.0
+info:
+  title: Flow API
+  description: >
+    Flow is a self-hosted unified workspace (documents, structured data, projects,
+    canvas, files, automation) built around one identity graph (`nodes`).
+    Authentication is cookie-based (session + CSRF); most endpoints require an
+    authenticated session and workspace membership.
+  version: "0.1.0"
+servers:
+  - url: /api/v1
+tags:
+  - name: auth
+  - name: users
+  - name: workspaces
+  - name: spaces
+  - name: nodes
+  - name: pages
+  - name: blocks
+  - name: databases
+  - name: records
+  - name: views
+  - name: projects
+  - name: tasks
+  - name: canvases
+  - name: files
+  - name: comments
+  - name: sharing
+  - name: notifications
+  - name: search
+  - name: automations
+  - name: webhooks
+  - name: collaboration
+
+security:
+  - sessionCookie: []
+
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Create an account. Sends a verification email; does not sign in.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OKResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { description: An account with this email already exists }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Sign in. Sets the session and CSRF cookies.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { description: Invalid credentials, unverified email, locked, or disabled account }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Revoke the current session and clear auth cookies
+      responses:
+        "204": { description: No Content }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Get the current authenticated user
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/verify-email:
+    post:
+      tags: [auth]
+      summary: Consume an email-verification token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TokenRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OKResponse" }
+        "400": { description: Invalid or expired token }
+
+  /auth/resend-verification:
+    post:
+      tags: [auth]
+      summary: Resend the verification email (always 204, does not reveal whether the address exists)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EmailRequest" }
+      responses:
+        "204": { description: No Content }
+
+  /auth/forgot-password:
+    post:
+      tags: [auth]
+      summary: Request a password-reset email (always 204, does not reveal whether the address exists)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EmailRequest" }
+      responses:
+        "204": { description: No Content }
+
+  /auth/reset-password:
+    post:
+      tags: [auth]
+      summary: Consume a password-reset token and set a new password. Revokes all existing sessions.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResetPasswordRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OKResponse" }
+        "400": { description: Invalid/expired token, or password reused }
+
+  /users/me:
+    patch:
+      tags: [users]
+      summary: Update the current user's profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateProfileRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Profile" }
+        "409": { description: Username already taken }
+
+  /users/me/preferences:
+    get:
+      tags: [users]
+      summary: Get the current user's preferences (editor, notifications, accessibility, shortcuts)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Preferences" }
+    patch:
+      tags: [users]
+      summary: Update the current user's preferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdatePreferencesRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Preferences" }
+
+  /users/me/sessions:
+    get:
+      tags: [users]
+      summary: List the current user's active sessions, most recently active first
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Session" }
+
+  /users/me/sessions/{sessionID}:
+    parameters:
+      - name: sessionID
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [users]
+      summary: Revoke one of the current user's other sessions ("sign out this device")
+      responses:
+        "204": { description: No Content }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /workspaces:
+    get:
+      tags: [workspaces]
+      summary: List workspaces the current user belongs to
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Workspace" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [workspaces]
+      summary: Create a workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateWorkspaceRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Workspace" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /workspaces/{workspaceID}:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    get:
+      tags: [workspaces]
+      summary: Get a workspace
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Workspace" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [workspaces]
+      summary: Update a workspace (owner/admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateWorkspaceRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Workspace" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [workspaces]
+      summary: Soft-delete a workspace (owner only)
+      responses:
+        "204": { description: No Content }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /workspaces/{workspaceID}/usage:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    get:
+      tags: [workspaces]
+      summary: Storage and seat usage for a workspace
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Usage" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /workspaces/{workspaceID}/members:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    get:
+      tags: [workspaces]
+      summary: List members
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Member" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [workspaces]
+      summary: Add an existing user to the workspace by email (owner/admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddMemberRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Member" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /workspaces/{workspaceID}/members/{userID}:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+      - $ref: "#/components/parameters/userID"
+    patch:
+      tags: [workspaces]
+      summary: Update a member's role/seat/status (owner/admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateMemberRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Member" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [workspaces]
+      summary: Remove a member (owner/admin)
+      responses:
+        "204": { description: No Content }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /workspaces/{workspaceID}/invites:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    get:
+      tags: [workspaces]
+      summary: List pending invites (owner/admin)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Invite" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [workspaces]
+      summary: Create an invite (owner/admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateInviteRequest" }
+      responses:
+        "201":
+          description: Created — includes the raw invite token once
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/Invite" }
+                  - type: object
+                    properties:
+                      token: { type: string }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /workspaces/{workspaceID}/invites/{inviteID}:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+      - name: inviteID
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [workspaces]
+      summary: Revoke an invite (owner/admin)
+      responses:
+        "204": { description: No Content }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /invites/{token}/accept:
+    post:
+      tags: [workspaces]
+      summary: Accept an invite as the current user
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OKResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /workspaces/{workspaceID}/roles:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    get:
+      tags: [workspaces]
+      summary: List custom roles
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Role" }
+    post:
+      tags: [workspaces]
+      summary: Create a custom role (owner/admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateRoleRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Role" }
+
+  /workspaces/{workspaceID}/roles/{roleID}:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+      - name: roleID
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [workspaces]
+      summary: Update a custom role (owner/admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateRoleRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Role" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [workspaces]
+      summary: Delete a custom role (owner/admin)
+      responses:
+        "204": { description: No Content }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /workspaces/{workspaceID}/groups:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    get:
+      tags: [workspaces]
+      summary: List groups
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Group" }
+    post:
+      tags: [workspaces]
+      summary: Create a group (owner/admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateGroupRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Group" }
+
+  /workspaces/{workspaceID}/groups/{groupID}:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+      - name: groupID
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [workspaces]
+      summary: Update a group (owner/admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateGroupRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Group" }
+    delete:
+      tags: [workspaces]
+      summary: Delete a group (owner/admin)
+      responses:
+        "204": { description: No Content }
+
+  /workspaces/{workspaceID}/groups/{groupID}/members:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+      - name: groupID
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [workspaces]
+      summary: List group members
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/GroupMember" }
+    post:
+      tags: [workspaces]
+      summary: Add a group member (owner/admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddGroupMemberRequest" }
+      responses:
+        "204": { description: No Content }
+
+  /workspaces/{workspaceID}/groups/{groupID}/members/{userID}:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+      - name: groupID
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - $ref: "#/components/parameters/userID"
+    delete:
+      tags: [workspaces]
+      summary: Remove a group member (owner/admin)
+      responses:
+        "204": { description: No Content }
+
+  /workspaces/{workspaceID}/domains:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    get:
+      tags: [workspaces]
+      summary: List verified join domains
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Domain" }
+    post:
+      tags: [workspaces]
+      summary: Add a domain (owner/admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDomainRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Domain" }
+
+  /workspaces/{workspaceID}/domains/{domainID}:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+      - name: domainID
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [workspaces]
+      summary: Remove a domain (owner/admin)
+      responses:
+        "204": { description: No Content }
+
+  /workspaces/{workspaceID}/spaces:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    get:
+      tags: [spaces]
+      summary: List spaces visible to the current user
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Space" }
+    post:
+      tags: [spaces]
+      summary: Create a space
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSpaceRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Space" }
+
+  /spaces/{spaceID}:
+    parameters:
+      - $ref: "#/components/parameters/spaceID"
+    get:
+      tags: [spaces]
+      summary: Get a space
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Space" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [spaces]
+      summary: Update a space (space admin or workspace owner/admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSpaceRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Space" }
+    delete:
+      tags: [spaces]
+      summary: Delete a non-default space
+      responses:
+        "204": { description: No Content }
+
+  /spaces/{spaceID}/members:
+    parameters:
+      - $ref: "#/components/parameters/spaceID"
+    get:
+      tags: [spaces]
+      summary: List space members
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SpaceMember" }
+    post:
+      tags: [spaces]
+      summary: Add a space member
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddSpaceMemberRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SpaceMember" }
+
+  /spaces/{spaceID}/members/{userID}:
+    parameters:
+      - $ref: "#/components/parameters/spaceID"
+      - $ref: "#/components/parameters/userID"
+    patch:
+      tags: [spaces]
+      summary: Update a space member's role
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSpaceMemberRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SpaceMember" }
+    delete:
+      tags: [spaces]
+      summary: Remove a space member
+      responses:
+        "204": { description: No Content }
+
+  /nodes/{nodeID}:
+    parameters:
+      - $ref: "#/components/parameters/nodeID"
+    get:
+      tags: [nodes]
+      summary: Get any node by id
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Node" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [nodes]
+      summary: Update generic node fields (title/description/icon/props/rank/space)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateNodeRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Node" }
+    delete:
+      tags: [nodes]
+      summary: Soft-delete a node (moves to trash)
+      responses:
+        "204": { description: No Content }
+
+  /nodes/{nodeID}/move:
+    parameters:
+      - $ref: "#/components/parameters/nodeID"
+    post:
+      tags: [nodes]
+      summary: Move a node to a new parent/rank
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MoveNodeRequest" }
+      responses:
+        "204": { description: No Content }
+
+  /nodes/{nodeID}/archive:
+    parameters:
+      - $ref: "#/components/parameters/nodeID"
+    post:
+      tags: [nodes]
+      summary: Archive a node
+      responses:
+        "204": { description: No Content }
+
+  /nodes/{nodeID}/restore:
+    parameters:
+      - $ref: "#/components/parameters/nodeID"
+    post:
+      tags: [nodes]
+      summary: Restore a soft-deleted node from trash
+      responses:
+        "204": { description: No Content }
+
+  /workspaces/{workspaceID}/trash:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    get:
+      tags: [nodes]
+      summary: List trashed nodes in a workspace
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TrashItem" }
+
+  /nodes/{nodeID}/permissions:
+    parameters:
+      - $ref: "#/components/parameters/nodeID"
+    get:
+      tags: [nodes]
+      summary: List a node's ACL entries
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Permission" }
+    put:
+      tags: [nodes]
+      summary: Replace a node's ACL entries (manage role or workspace owner/admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetPermissionsRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Permission" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /nodes/{nodeID}/star:
+    parameters:
+      - $ref: "#/components/parameters/nodeID"
+    post:
+      tags: [nodes]
+      summary: Star a node
+      responses:
+        "204": { description: No Content }
+    delete:
+      tags: [nodes]
+      summary: Unstar a node
+      responses:
+        "204": { description: No Content }
+
+  /nodes/{nodeID}/pin:
+    parameters:
+      - $ref: "#/components/parameters/nodeID"
+    post:
+      tags: [nodes]
+      summary: Pin a node
+      responses:
+        "204": { description: No Content }
+    delete:
+      tags: [nodes]
+      summary: Unpin a node
+      responses:
+        "204": { description: No Content }
+
+  /nodes/{nodeID}/watch:
+    parameters:
+      - $ref: "#/components/parameters/nodeID"
+    post:
+      tags: [nodes]
+      summary: Watch a node for updates
+      responses:
+        "204": { description: No Content }
+    delete:
+      tags: [nodes]
+      summary: Unwatch a node
+      responses:
+        "204": { description: No Content }
+
+  /nodes/{nodeID}/visit:
+    parameters:
+      - $ref: "#/components/parameters/nodeID"
+    post:
+      tags: [nodes]
+      summary: Record a visit (recents)
+      responses:
+        "204": { description: No Content }
+
+  /workspaces/{workspaceID}/pages:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    get:
+      tags: [pages]
+      summary: List pages in a workspace (flat; build the tree from parent_id)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Page" }
+    post:
+      tags: [pages]
+      summary: Create a page
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePageRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Page" }
+
+  /pages/{pageID}:
+    parameters:
+      - $ref: "#/components/parameters/pageID"
+    get:
+      tags: [pages]
+      summary: Get a page
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Page" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [pages]
+      summary: Update a page
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdatePageRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Page" }
+    delete:
+      tags: [pages]
+      summary: Soft-delete a page
+      responses:
+        "204": { description: No Content }
+
+  /pages/{pageID}/duplicate:
+    parameters:
+      - $ref: "#/components/parameters/pageID"
+    post:
+      tags: [pages]
+      summary: Duplicate a page (shallow — does not deep-copy child blocks yet)
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Page" }
+
+  /pages/{pageID}/move:
+    parameters:
+      - $ref: "#/components/parameters/pageID"
+    post:
+      tags: [pages]
+      summary: Move a page to a new parent/rank
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MoveNodeRequest" }
+      responses:
+        "204": { description: No Content }
+
+  /block-flavours:
+    get:
+      tags: [blocks]
+      summary: List the registered, non-deprecated block flavours
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/BlockFlavour" }
+
+  /pages/{pageID}/blocks:
+    parameters:
+      - $ref: "#/components/parameters/pageID"
+    get:
+      tags: [blocks]
+      summary: List a page's blocks, in rank order
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Block" }
+    post:
+      tags: [blocks]
+      summary: Create a block under a page
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateBlockRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Block" }
+
+  /pages/{pageID}/blocks/reorder:
+    parameters:
+      - $ref: "#/components/parameters/pageID"
+    post:
+      tags: [blocks]
+      summary: Batch-update block ranks within a page
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReorderBlocksRequest" }
+      responses:
+        "204": { description: No Content }
+
+  /blocks/{blockID}:
+    parameters:
+      - $ref: "#/components/parameters/blockID"
+    get:
+      tags: [blocks]
+      summary: Get a block
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Block" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [blocks]
+      summary: Update a block
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateBlockRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Block" }
+    delete:
+      tags: [blocks]
+      summary: Delete a block
+      responses:
+        "204": { description: No Content }
+
+  /workspaces/{workspaceID}/databases:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    get:
+      tags: [databases]
+      summary: List databases in a workspace
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Database" }
+    post:
+      tags: [databases]
+      summary: Create a database
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDatabaseRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Database" }
+
+  /databases/{databaseID}:
+    parameters:
+      - $ref: "#/components/parameters/databaseID"
+    get:
+      tags: [databases]
+      summary: Get a database
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Database" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [databases]
+      summary: Update a database
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateDatabaseRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Database" }
+    delete:
+      tags: [databases]
+      summary: Soft-delete a database
+      responses:
+        "204": { description: No Content }
+
+  /databases/{databaseID}/fields:
+    parameters:
+      - $ref: "#/components/parameters/databaseID"
+    get:
+      tags: [databases]
+      summary: List fields, in rank order
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Field" }
+    post:
+      tags: [databases]
+      summary: Create a field. The first field created becomes the primary field.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateFieldRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Field" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /fields/{fieldID}:
+    parameters:
+      - $ref: "#/components/parameters/fieldID"
+    patch:
+      tags: [databases]
+      summary: Update a field
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateFieldRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Field" }
+    delete:
+      tags: [databases]
+      summary: Delete a field
+      responses:
+        "204": { description: No Content }
+
+  /fields/{fieldID}/options:
+    parameters:
+      - $ref: "#/components/parameters/fieldID"
+    get:
+      tags: [databases]
+      summary: List a select/status field's options
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FieldOption" }
+    post:
+      tags: [databases]
+      summary: Add a field option
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateFieldOptionRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FieldOption" }
+
+  /field-options/{optionID}:
+    parameters:
+      - name: optionID
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [databases]
+      summary: Update a field option
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateFieldOptionRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FieldOption" }
+    delete:
+      tags: [databases]
+      summary: Delete a field option
+      responses:
+        "204": { description: No Content }
+
+  /databases/{databaseID}/records:
+    parameters:
+      - $ref: "#/components/parameters/databaseID"
+    get:
+      tags: [records]
+      summary: List records in a database, with field values embedded
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Record" }
+    post:
+      tags: [records]
+      summary: Create a record, optionally with initial field values
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateRecordRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Record" }
+
+  /records/{recordID}:
+    parameters:
+      - $ref: "#/components/parameters/recordID"
+    get:
+      tags: [records]
+      summary: Get a record
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Record" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [records]
+      summary: Update a record's title/rank
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateRecordRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Record" }
+    delete:
+      tags: [records]
+      summary: Soft-delete a record
+      responses:
+        "204": { description: No Content }
+
+  /records/{recordID}/fields/{fieldID}:
+    parameters:
+      - $ref: "#/components/parameters/recordID"
+      - $ref: "#/components/parameters/fieldID"
+    put:
+      tags: [records]
+      summary: >
+        Set one cell's value. Writes field_values, appends a revision, enforces
+        uniqueness when the field is unique, and enqueues formula recompute for
+        dependent fields (persisted only — evaluation is a separate worker).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetFieldValueRequest" }
+      responses:
+        "200":
+          description: OK — the full record with updated values
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Record" }
+        "409": { description: Unique constraint violated }
+
+  /records/{recordID}/revisions:
+    parameters:
+      - $ref: "#/components/parameters/recordID"
+    get:
+      tags: [records]
+      summary: List recent cell-value revisions for a record (most recent 200)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FieldValueRevision" }
+
+  /databases/{databaseID}/views:
+    parameters:
+      - $ref: "#/components/parameters/databaseID"
+    get:
+      tags: [views]
+      summary: List views for a database
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/View" }
+    post:
+      tags: [views]
+      summary: Create a view
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateViewRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/View" }
+
+  /views/{viewID}:
+    parameters:
+      - $ref: "#/components/parameters/viewID"
+    get:
+      tags: [views]
+      summary: Get a view
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/View" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [views]
+      summary: Update a view's filter/sort/group/column config
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateViewRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/View" }
+    delete:
+      tags: [views]
+      summary: Delete a non-default view
+      responses:
+        "204": { description: No Content }
+        "400": { description: Cannot delete the default view }
+
+  /workspaces/{workspaceID}/projects:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    get:
+      tags: [projects]
+      summary: List projects in a workspace
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Project" }
+    post:
+      tags: [projects]
+      summary: Create a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateProjectRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Project" }
+
+  /projects/{projectID}:
+    parameters:
+      - $ref: "#/components/parameters/projectID"
+    get:
+      tags: [projects]
+      summary: Get a project
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Project" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [projects]
+      summary: Update a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateProjectRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Project" }
+    delete:
+      tags: [projects]
+      summary: Soft-delete a project
+      responses:
+        "204": { description: No Content }
+
+  /projects/{projectID}/tasks:
+    parameters:
+      - $ref: "#/components/parameters/projectID"
+    get:
+      tags: [tasks]
+      summary: List a project's tasks
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Task" }
+    post:
+      tags: [tasks]
+      summary: Create a task under a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTaskRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+
+  /workspaces/{workspaceID}/tasks:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    get:
+      tags: [tasks]
+      summary: List all tasks in a workspace (flat, across projects)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Task" }
+
+  /tasks/{taskID}:
+    parameters:
+      - $ref: "#/components/parameters/taskID"
+    get:
+      tags: [tasks]
+      summary: Get a task
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [tasks]
+      summary: Update a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateTaskRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+    delete:
+      tags: [tasks]
+      summary: Soft-delete a task
+      responses:
+        "204": { description: No Content }
+
+  /tasks/{taskID}/move:
+    parameters:
+      - $ref: "#/components/parameters/taskID"
+    post:
+      tags: [tasks]
+      summary: Move a task to a different project and/or rank
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MoveTaskRequest" }
+      responses:
+        "204": { description: No Content }
+
+  /workspaces/{workspaceID}/canvases:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    get:
+      tags: [canvases]
+      summary: List canvases in a workspace
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Canvas" }
+    post:
+      tags: [canvases]
+      summary: Create a canvas
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCanvasRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Canvas" }
+
+  /canvases/{canvasID}:
+    parameters:
+      - $ref: "#/components/parameters/canvasID"
+    get:
+      tags: [canvases]
+      summary: Get a canvas
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Canvas" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [canvases]
+      summary: Update a canvas
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCanvasRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Canvas" }
+    delete:
+      tags: [canvases]
+      summary: Soft-delete a canvas
+      responses:
+        "204": { description: No Content }
+
+  /canvases/{canvasID}/objects:
+    parameters:
+      - $ref: "#/components/parameters/canvasID"
+    get:
+      tags: [canvases]
+      summary: List a canvas's objects, in z-order
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CanvasObject" }
+    post:
+      tags: [canvases]
+      summary: Create an object on a canvas
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCanvasObjectRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CanvasObject" }
+
+  /canvas-objects/{objectID}:
+    parameters:
+      - $ref: "#/components/parameters/objectID"
+    patch:
+      tags: [canvases]
+      summary: Update an object's geometry/style
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCanvasObjectRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CanvasObject" }
+    delete:
+      tags: [canvases]
+      summary: Delete an object
+      responses:
+        "204": { description: No Content }
+
+  /canvases/{canvasID}/connectors:
+    parameters:
+      - $ref: "#/components/parameters/canvasID"
+    get:
+      tags: [canvases]
+      summary: List a canvas's connectors
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CanvasConnector" }
+    post:
+      tags: [canvases]
+      summary: Connect two objects on a canvas
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCanvasConnectorRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CanvasConnector" }
+
+  /canvas-connectors/{connectorID}:
+    parameters:
+      - $ref: "#/components/parameters/connectorID"
+    patch:
+      tags: [canvases]
+      summary: Update a connector's shape/style
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCanvasConnectorRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CanvasConnector" }
+    delete:
+      tags: [canvases]
+      summary: Delete a connector
+      responses:
+        "204": { description: No Content }
+
+  /canvases/{canvasID}/camera:
+    parameters:
+      - $ref: "#/components/parameters/canvasID"
+    put:
+      tags: [canvases]
+      summary: Save the current user's pan/zoom for a canvas (reconnect hydration)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PutCanvasCameraRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CanvasCamera" }
+
+  /canvases/{canvasID}/tags:
+    parameters:
+      - $ref: "#/components/parameters/canvasID"
+    get:
+      tags: [canvases]
+      summary: List a canvas's tags
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CanvasTag" }
+    post:
+      tags: [canvases]
+      summary: Create a tag on a canvas
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCanvasTagRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CanvasTag" }
+
+  /workspaces/{workspaceID}/files/uploads:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    post:
+      tags: [files]
+      summary: Start a direct-to-storage upload (returns a presigned PUT URL)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateUploadRequest" }
+      responses:
+        "201":
+          description: Created — PUT the file body to upload_url, then call complete
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreateUploadResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /files/uploads/{uploadID}/complete:
+    parameters:
+      - name: uploadID
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [files]
+      summary: Finalize an upload after the client has PUT the object to storage
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CompleteUploadRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/File" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /files/{fileID}:
+    parameters:
+      - $ref: "#/components/parameters/fileID"
+    get:
+      tags: [files]
+      summary: Get file metadata
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/File" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [files]
+      summary: Rename a file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateFileRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/File" }
+    delete:
+      tags: [files]
+      summary: Soft-delete a file (bytes are queued for GC via a tombstone)
+      responses:
+        "204": { description: No Content }
+
+  /files/{fileID}/download:
+    parameters:
+      - $ref: "#/components/parameters/fileID"
+    get:
+      tags: [files]
+      summary: Redirects (302) to a short-lived presigned download URL
+      responses:
+        "302": { description: Redirect to object storage }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /nodes/{nodeID}/discussions:
+    parameters:
+      - $ref: "#/components/parameters/nodeID"
+    get:
+      tags: [comments]
+      summary: List discussion threads on a node
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Discussion" }
+    post:
+      tags: [comments]
+      summary: Start a discussion thread on a node
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDiscussionRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Discussion" }
+
+  /discussions/{discussionID}:
+    parameters:
+      - $ref: "#/components/parameters/discussionID"
+    get:
+      tags: [comments]
+      summary: Get a discussion thread
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Discussion" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /discussions/{discussionID}/resolve:
+    parameters:
+      - $ref: "#/components/parameters/discussionID"
+    post:
+      tags: [comments]
+      summary: Mark a discussion resolved
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Discussion" }
+
+  /discussions/{discussionID}/comments:
+    parameters:
+      - $ref: "#/components/parameters/discussionID"
+    get:
+      tags: [comments]
+      summary: List comments in a discussion thread
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Comment" }
+    post:
+      tags: [comments]
+      summary: Add a comment to a discussion (optionally a threaded reply via parent_id)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCommentRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Comment" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /comments/{commentID}:
+    parameters:
+      - $ref: "#/components/parameters/commentID"
+    patch:
+      tags: [comments]
+      summary: Edit a comment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCommentRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Comment" }
+    delete:
+      tags: [comments]
+      summary: Soft-delete a comment
+      responses:
+        "204": { description: No Content }
+
+  /comments/{commentID}/reactions:
+    parameters:
+      - $ref: "#/components/parameters/commentID"
+    post:
+      tags: [comments]
+      summary: React to a comment with an emoji
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateReactionRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Reaction" }
+
+  /comments/{commentID}/reactions/{reactionID}:
+    parameters:
+      - $ref: "#/components/parameters/commentID"
+      - name: reactionID
+        in: path
+        required: true
+        description: The emoji to remove (reactions are keyed by comment+user+emoji, not a synthetic id).
+        schema: { type: string }
+    delete:
+      tags: [comments]
+      summary: Remove the current user's reaction
+      responses:
+        "204": { description: No Content }
+
+  /nodes/{nodeID}/share-links:
+    parameters:
+      - $ref: "#/components/parameters/nodeID"
+    get:
+      tags: [sharing]
+      summary: List share links for a node (manage role or workspace owner/admin)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ShareLink" }
+    post:
+      tags: [sharing]
+      summary: Create a share link. The raw token is returned once.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateShareLinkRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreateShareLinkResponse" }
+
+  /share-links/{linkID}:
+    parameters:
+      - $ref: "#/components/parameters/linkID"
+    patch:
+      tags: [sharing]
+      summary: Update a share link's settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateShareLinkRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShareLink" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [sharing]
+      summary: Revoke a share link
+      responses:
+        "204": { description: No Content }
+
+  /public/{token}:
+    get:
+      tags: [sharing]
+      summary: Resolve a share-link token. No authentication required.
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+        - name: X-Share-Password
+          in: header
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicResolveResponse" }
+        "403": { description: Password required or incorrect }
+        "404": { description: Link not found, expired, revoked, or exhausted }
+
+  /nodes/{nodeID}/publish:
+    parameters:
+      - $ref: "#/components/parameters/nodeID"
+    post:
+      tags: [sharing]
+      summary: Publish (or re-publish) a node at a workspace-unique slug
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PublishRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublishedPage" }
+    delete:
+      tags: [sharing]
+      summary: Unpublish a node
+      responses:
+        "204": { description: No Content }
+
+  /notifications:
+    get:
+      tags: [notifications]
+      summary: List the current user's notifications (optionally ?workspace_id=)
+      parameters:
+        - name: workspace_id
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Notification" }
+
+  /notifications/read:
+    post:
+      tags: [notifications]
+      summary: Mark all notifications read (optionally scoped to ?workspace_id=)
+      parameters:
+        - name: workspace_id
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: No Content }
+
+  /notifications/{notificationID}/read:
+    parameters:
+      - name: notificationID
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [notifications]
+      summary: Mark one notification read
+      responses:
+        "204": { description: No Content }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /workspaces/{workspaceID}/activity:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    get:
+      tags: [notifications]
+      summary: List recent activity events for a workspace
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ActivityEvent" }
+
+  /workspaces/{workspaceID}/search:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    get:
+      tags: [search]
+      summary: Full-text search over a workspace's nodes
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SearchResult" }
+
+  /workspaces/{workspaceID}/saved-searches:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    get:
+      tags: [search]
+      summary: List the current user's saved searches in a workspace
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SavedSearch" }
+    post:
+      tags: [search]
+      summary: Save a search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSavedSearchRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SavedSearch" }
+
+  /saved-searches/{searchID}:
+    parameters:
+      - name: searchID
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [search]
+      summary: Delete a saved search
+      responses:
+        "204": { description: No Content }
+
+  /workspaces/{workspaceID}/automations:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    get:
+      tags: [automations]
+      summary: List automations in a workspace
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Automation" }
+    post:
+      tags: [automations]
+      summary: Create an automation (disabled by default)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAutomationRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Automation" }
+
+  /automations/{automationID}:
+    parameters:
+      - $ref: "#/components/parameters/automationID"
+    get:
+      tags: [automations]
+      summary: Get an automation
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Automation" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [automations]
+      summary: Update an automation's trigger/conditions (bumps version)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateAutomationRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Automation" }
+    delete:
+      tags: [automations]
+      summary: Soft-delete an automation
+      responses:
+        "204": { description: No Content }
+
+  /automations/{automationID}/enable:
+    parameters:
+      - $ref: "#/components/parameters/automationID"
+    post:
+      tags: [automations]
+      summary: Enable an automation
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Automation" }
+
+  /automations/{automationID}/disable:
+    parameters:
+      - $ref: "#/components/parameters/automationID"
+    post:
+      tags: [automations]
+      summary: Disable an automation
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Automation" }
+
+  /automations/{automationID}/run:
+    parameters:
+      - $ref: "#/components/parameters/automationID"
+    post:
+      tags: [automations]
+      summary: >
+        Queue a manual run. Persists an automation_runs row and a jobs row;
+        execution is a separate worker (not implemented — see SCHEMA.md §8).
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RunRequest" }
+      responses:
+        "201":
+          description: Created (queued)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationRun" }
+
+  /automations/{automationID}/runs:
+    parameters:
+      - $ref: "#/components/parameters/automationID"
+    get:
+      tags: [automations]
+      summary: List recent runs (most recent 50)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AutomationRun" }
+
+  /workspaces/{workspaceID}/webhooks:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    get:
+      tags: [webhooks]
+      summary: List webhooks in a workspace
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Webhook" }
+    post:
+      tags: [webhooks]
+      summary: Create a webhook. The signing secret is returned once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateWebhookRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreateWebhookResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /webhooks/{webhookID}:
+    parameters:
+      - $ref: "#/components/parameters/webhookID"
+    get:
+      tags: [webhooks]
+      summary: Get a webhook
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Webhook" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [webhooks]
+      summary: Update a webhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateWebhookRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Webhook" }
+    delete:
+      tags: [webhooks]
+      summary: Soft-delete a webhook
+      responses:
+        "204": { description: No Content }
+
+  /webhooks/{webhookID}/deliveries:
+    parameters:
+      - $ref: "#/components/parameters/webhookID"
+    get:
+      tags: [webhooks]
+      summary: List recent delivery attempts (most recent 50)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/WebhookDelivery" }
+
+  /workspaces/{workspaceID}/presence:
+    parameters:
+      - $ref: "#/components/parameters/workspaceID"
+    get:
+      tags: [collaboration]
+      summary: >
+        List recent presence (last 5 minutes) across a workspace. Recovery/hydration
+        data only — live cursors are Redis pub/sub, not this endpoint (SCHEMA.md §6.14).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Presence" }
+
+  /nodes/{nodeID}/presence:
+    parameters:
+      - $ref: "#/components/parameters/nodeID"
+    get:
+      tags: [collaboration]
+      summary: List recent presence on a node
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Presence" }
+    put:
+      tags: [collaboration]
+      summary: Upsert the current user's presence on a node
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PutPresenceRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Presence" }
+    delete:
+      tags: [collaboration]
+      summary: Clear the current user's presence on a node (leaving)
+      responses:
+        "204": { description: No Content }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /nodes/{nodeID}/ws:
+    parameters:
+      - $ref: "#/components/parameters/nodeID"
+    get:
+      tags: [collaboration]
+      summary: Upgrade to a WebSocket carrying live presence and Yjs document sync for this node
+      description: >
+        Not a JSON endpoint — upgrades per RFC 6455 (requires the session cookie;
+        authorization is checked before the handshake completes since there is
+        no clean way to return an HTTP error afterward). One connection per
+        node multiplexes two kinds of frames:
+
+        Text frames are a small JSON control protocol: client sends
+        `{"type":"hello","client_id":"..."}` once, then optionally
+        `{"type":"presence","selection":...,"cursor":...,"viewport":...}`
+        (throttled server-side to 1/second); the server sends one
+        `{"type":"sync","snapshot":base64|null,"updates":[base64,...]}` right
+        after connecting, then `{"type":"presence","user_id":...,...}` when
+        other participants move.
+
+        Binary frames carry raw Yjs update bytes in both directions — the
+        server persists and relays them without decoding; CRDT merge happens
+        client-side in Yjs (see DEPENDENCIES.md §37, SCHEMA.md §8).
+      responses:
+        "101": { description: Switching Protocols — WebSocket established }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: flow_session
+      description: >
+        Set by POST /auth/login. Mutating requests also require the
+        X-CSRF-Token header to match the flow_csrf cookie.
+
+  parameters:
+    workspaceID:
+      name: workspaceID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    spaceID:
+      name: spaceID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    nodeID:
+      name: nodeID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    pageID:
+      name: pageID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    blockID:
+      name: blockID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    userID:
+      name: userID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    databaseID:
+      name: databaseID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    fieldID:
+      name: fieldID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    recordID:
+      name: recordID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    viewID:
+      name: viewID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    projectID:
+      name: projectID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    taskID:
+      name: taskID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    canvasID:
+      name: canvasID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    objectID:
+      name: objectID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    connectorID:
+      name: connectorID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    fileID:
+      name: fileID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    discussionID:
+      name: discussionID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    commentID:
+      name: commentID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    linkID:
+      name: linkID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    automationID:
+      name: automationID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    webhookID:
+      name: webhookID
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Sign in required
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Not allowed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+
+    OKResponse:
+      type: object
+      properties:
+        ok: { type: boolean }
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        email_verified: { type: boolean }
+
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 10, maxLength: 128 }
+        display_name: { type: string }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+
+    EmailRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+
+    TokenRequest:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string }
+
+    ResetPasswordRequest:
+      type: object
+      required: [token, password]
+      properties:
+        token: { type: string }
+        password: { type: string, minLength: 10, maxLength: 128 }
+
+    Profile:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        given_name: { type: string }
+        family_name: { type: string }
+        username: { type: string, nullable: true }
+        locale: { type: string }
+        timezone: { type: string }
+        week_starts_on: { type: integer, minimum: 0, maximum: 6 }
+        date_format: { type: string }
+        time_format: { type: string }
+        theme: { type: string, enum: [system, light, dark, amoled] }
+        bio: { type: string }
+        avatar_object_key: { type: string, nullable: true }
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        display_name: { type: string }
+        given_name: { type: string }
+        family_name: { type: string }
+        username: { type: string }
+        locale: { type: string }
+        timezone: { type: string }
+        week_starts_on: { type: integer, minimum: 0, maximum: 6 }
+        date_format: { type: string }
+        time_format: { type: string }
+        theme: { type: string, enum: [system, light, dark, amoled] }
+        bio: { type: string }
+
+    Preferences:
+      type: object
+      properties:
+        editor: { type: object }
+        notifications: { type: object }
+        accessibility: { type: object }
+        shortcuts: { type: object }
+        extras: { type: object }
+        updated_at: { type: string, format: date-time }
+
+    UpdatePreferencesRequest:
+      type: object
+      properties:
+        editor: { type: object }
+        notifications: { type: object }
+        accessibility: { type: object }
+        shortcuts: { type: object }
+        extras: { type: object }
+
+    Session:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_agent: { type: string }
+        ip: { type: string }
+        country: { type: string }
+        created_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        current: { type: boolean }
+
+    Workspace:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string, nullable: true }
+        description: { type: string }
+        icon: { type: string, nullable: true }
+        color: { type: string, nullable: true }
+        status: { type: string }
+        settings: { type: object }
+        owner_user_id: { type: string, format: uuid, nullable: true }
+        public_sharing_enabled: { type: boolean }
+        guest_access_enabled: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateWorkspaceRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string }
+        icon: { type: string }
+        color: { type: string }
+
+    UpdateWorkspaceRequest:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        icon: { type: string }
+        color: { type: string }
+        public_sharing_enabled: { type: boolean }
+        guest_access_enabled: { type: boolean }
+
+    Usage:
+      type: object
+      properties:
+        storage_used_bytes: { type: integer, format: int64 }
+        storage_quota_bytes: { type: integer, format: int64, nullable: true }
+        member_count: { type: integer }
+        member_quota: { type: integer, nullable: true }
+        guest_count: { type: integer }
+        guest_quota: { type: integer, nullable: true }
+
+    Member:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        role: { type: string, enum: [owner, admin, member, guest] }
+        role_id: { type: string, format: uuid, nullable: true }
+        seat_type: { type: string, enum: [full, guest] }
+        status: { type: string, enum: [active, suspended, removed] }
+        joined_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    AddMemberRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+        role: { type: string, enum: [owner, admin, member, guest] }
+
+    UpdateMemberRequest:
+      type: object
+      properties:
+        role: { type: string, enum: [owner, admin, member, guest] }
+        seat_type: { type: string, enum: [full, guest] }
+        status: { type: string, enum: [active, suspended, removed] }
+
+    Invite:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        role: { type: string }
+        group_id: { type: string, format: uuid, nullable: true }
+        seat_type: { type: string }
+        expires_at: { type: string, format: date-time }
+        accepted_at: { type: string, format: date-time, nullable: true }
+        revoked_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    CreateInviteRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+        role: { type: string, enum: [owner, admin, member, guest] }
+        group_id: { type: string, format: uuid }
+        seat_type: { type: string, enum: [full, guest] }
+
+    Role:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        is_system: { type: boolean }
+        permissions: { type: object }
+        created_at: { type: string, format: date-time }
+
+    CreateRoleRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        permissions: { type: object }
+
+    UpdateRoleRequest:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        permissions: { type: object }
+
+    Group:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        created_at: { type: string, format: date-time }
+
+    CreateGroupRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string }
+
+    UpdateGroupRequest:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+
+    GroupMember:
+      type: object
+      properties:
+        user_id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        created_at: { type: string, format: date-time }
+
+    AddGroupMemberRequest:
+      type: object
+      required: [user_id]
+      properties:
+        user_id: { type: string, format: uuid }
+
+    Domain:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        domain: { type: string }
+        verified_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    CreateDomainRequest:
+      type: object
+      required: [domain]
+      properties:
+        domain: { type: string }
+
+    Space:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        icon: { type: string, nullable: true }
+        is_private: { type: boolean }
+        is_default: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateSpaceRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        icon: { type: string }
+        is_private: { type: boolean }
+
+    UpdateSpaceRequest:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        icon: { type: string }
+        is_private: { type: boolean }
+
+    SpaceMember:
+      type: object
+      properties:
+        user_id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        role: { type: string, enum: [member, admin] }
+        created_at: { type: string, format: date-time }
+
+    AddSpaceMemberRequest:
+      type: object
+      required: [user_id]
+      properties:
+        user_id: { type: string, format: uuid }
+        role: { type: string, enum: [member, admin] }
+
+    UpdateSpaceMemberRequest:
+      type: object
+      required: [role]
+      properties:
+        role: { type: string, enum: [member, admin] }
+
+    Node:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        space_id: { type: string, format: uuid, nullable: true }
+        parent_id: { type: string, format: uuid, nullable: true }
+        type: { type: string }
+        subtype: { type: string, nullable: true }
+        flavour: { type: string, nullable: true }
+        title: { type: string }
+        description: { type: string }
+        icon: { type: string, nullable: true }
+        rank: { type: string }
+        props: { type: object }
+        version: { type: integer, format: int64 }
+        created_by: { type: string, format: uuid, nullable: true }
+        archived_at: { type: string, format: date-time, nullable: true }
+        deleted_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    UpdateNodeRequest:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        icon: { type: string }
+        props: { type: object }
+        rank: { type: string }
+        space_id: { type: string, format: uuid }
+
+    MoveNodeRequest:
+      type: object
+      properties:
+        parent_id: { type: string, format: uuid, nullable: true }
+        rank: { type: string }
+
+    TrashItem:
+      type: object
+      properties:
+        node_id: { type: string, format: uuid }
+        title: { type: string }
+        type: { type: string }
+        deleted_at: { type: string, format: date-time }
+        restore_until: { type: string, format: date-time }
+        original_parent_id: { type: string, format: uuid, nullable: true }
+
+    Permission:
+      type: object
+      properties:
+        principal_type: { type: string, enum: [user, group, public] }
+        principal_id: { type: string, format: uuid }
+        role: { type: string, enum: [view, comment, edit, manage] }
+        inherit: { type: boolean }
+        public_role: { type: string, nullable: true }
+        expires_at: { type: string, format: date-time, nullable: true }
+
+    SetPermissionsRequest:
+      type: object
+      required: [permissions]
+      properties:
+        permissions:
+          type: array
+          items:
+            type: object
+            required: [principal_type, principal_id, role]
+            properties:
+              principal_type: { type: string, enum: [user, group, public] }
+              principal_id: { type: string, format: uuid }
+              role: { type: string, enum: [view, comment, edit, manage] }
+              inherit: { type: boolean }
+              expires_at: { type: string, format: date-time }
+
+    Page:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        space_id: { type: string, format: uuid, nullable: true }
+        parent_id: { type: string, format: uuid, nullable: true }
+        title: { type: string }
+        description: { type: string }
+        icon: { type: string, nullable: true }
+        rank: { type: string }
+        props: { type: object }
+        version: { type: integer, format: int64 }
+        archived_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreatePageRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        parent_id: { type: string, format: uuid }
+        space_id: { type: string, format: uuid }
+        icon: { type: string }
+        props: { type: object }
+
+    UpdatePageRequest:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        icon: { type: string }
+        props: { type: object }
+
+    BlockFlavour:
+      type: object
+      properties:
+        flavour: { type: string }
+        version: { type: integer }
+        node_type: { type: string }
+        schema: { type: object }
+        deprecated_at: { type: string, format: date-time, nullable: true }
+
+    Block:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        page_id: { type: string, format: uuid }
+        flavour: { type: string, nullable: true }
+        rank: { type: string }
+        props: { type: object }
+        version: { type: integer, format: int64 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateBlockRequest:
+      type: object
+      required: [flavour]
+      properties:
+        flavour: { type: string }
+        rank: { type: string }
+        props: { type: object }
+
+    UpdateBlockRequest:
+      type: object
+      properties:
+        flavour: { type: string }
+        props: { type: object }
+        rank: { type: string }
+
+    ReorderBlocksRequest:
+      type: object
+      required: [order]
+      properties:
+        order:
+          type: array
+          items:
+            type: object
+            required: [id, rank]
+            properties:
+              id: { type: string, format: uuid }
+              rank: { type: string }
+
+    Database:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        is_inline: { type: boolean }
+        primary_field_id: { type: string, format: uuid, nullable: true }
+        row_count: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateDatabaseRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        parent_id: { type: string, format: uuid }
+        space_id: { type: string, format: uuid }
+        is_inline: { type: boolean }
+
+    UpdateDatabaseRequest:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        primary_field_id: { type: string, format: uuid }
+
+    FieldType:
+      type: string
+      enum:
+        - text
+        - number
+        - boolean
+        - date
+        - datetime
+        - select
+        - multi_select
+        - person
+        - relation
+        - formula
+        - file
+        - url
+        - email
+        - status
+
+    Field:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        database_id: { type: string, format: uuid }
+        name: { type: string }
+        type: { $ref: "#/components/schemas/FieldType" }
+        description: { type: string }
+        options: { type: object }
+        is_primary: { type: boolean }
+        is_required: { type: boolean }
+        is_unique: { type: boolean }
+        is_computed: { type: boolean }
+        is_hidden: { type: boolean }
+        formula: { type: string, nullable: true }
+        rank: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateFieldRequest:
+      type: object
+      required: [name, type]
+      properties:
+        name: { type: string }
+        type: { $ref: "#/components/schemas/FieldType" }
+        description: { type: string }
+        options: { type: object }
+        is_required: { type: boolean }
+        is_unique: { type: boolean }
+        is_hidden: { type: boolean }
+        formula: { type: string }
+        rank: { type: string }
+
+    UpdateFieldRequest:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        options: { type: object }
+        is_required: { type: boolean }
+        is_unique: { type: boolean }
+        is_hidden: { type: boolean }
+        formula: { type: string }
+        rank: { type: string }
+
+    FieldOption:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        field_id: { type: string, format: uuid }
+        key: { type: string }
+        label: { type: string }
+        color: { type: string, nullable: true }
+        rank: { type: string }
+        disabled_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    CreateFieldOptionRequest:
+      type: object
+      required: [key, label]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        color: { type: string }
+        rank: { type: string }
+
+    UpdateFieldOptionRequest:
+      type: object
+      properties:
+        label: { type: string }
+        color: { type: string }
+        rank: { type: string }
+        disabled: { type: boolean }
+
+    Record:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        database_id: { type: string, format: uuid }
+        title: { type: string }
+        rank: { type: string }
+        values:
+          type: object
+          description: Map of field id (uuid string) to that cell's stored value.
+          additionalProperties: true
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateRecordRequest:
+      type: object
+      properties:
+        title: { type: string }
+        rank: { type: string }
+        values:
+          type: object
+          description: Initial values keyed by field id.
+          additionalProperties: true
+
+    UpdateRecordRequest:
+      type: object
+      properties:
+        title: { type: string }
+        rank: { type: string }
+
+    SetFieldValueRequest:
+      type: object
+      required: [value]
+      properties:
+        value: {}
+
+    FieldValueRevision:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        field_id: { type: string, format: uuid }
+        actor_id: { type: string, format: uuid, nullable: true }
+        value: {}
+        created_at: { type: string, format: date-time }
+
+    ViewType:
+      type: string
+      enum: [table, board, calendar, timeline, list, gallery, map]
+
+    View:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        database_id: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/ViewType" }
+        name: { type: string }
+        filter: { type: array, items: {} }
+        sorts: { type: array, items: {} }
+        groups: { type: array, items: {} }
+        visible_field_ids: { type: array, items: { type: string, format: uuid } }
+        frozen_field_ids: { type: array, items: { type: string, format: uuid } }
+        column_widths: { type: object }
+        is_default: { type: boolean }
+        is_personal: { type: boolean }
+        is_locked: { type: boolean }
+        row_height: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateViewRequest:
+      type: object
+      properties:
+        type: { $ref: "#/components/schemas/ViewType" }
+        name: { type: string }
+        is_personal: { type: boolean }
+
+    UpdateViewRequest:
+      type: object
+      properties:
+        name: { type: string }
+        filter: { type: array, items: {} }
+        sorts: { type: array, items: {} }
+        groups: { type: array, items: {} }
+        visible_field_ids: { type: array, items: { type: string, format: uuid } }
+        frozen_field_ids: { type: array, items: { type: string, format: uuid } }
+        column_widths: { type: object }
+        is_locked: { type: boolean }
+        row_height: { type: string }
+
+    Project:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        space_id: { type: string, format: uuid, nullable: true }
+        title: { type: string }
+        description: { type: string }
+        icon: { type: string, nullable: true }
+        props: { type: object }
+        version: { type: integer, format: int64 }
+        archived_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateProjectRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        description: { type: string }
+        space_id: { type: string, format: uuid }
+        icon: { type: string }
+        props: { type: object }
+
+    UpdateProjectRequest:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        icon: { type: string }
+        props: { type: object }
+
+    Task:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid, nullable: true }
+        title: { type: string }
+        description: { type: string }
+        rank: { type: string }
+        props:
+          type: object
+          description: >
+            Flexible task fields (status, priority, due_date, assignee_ids, ...)
+            live here — tasks have no dedicated columns beyond the generic node.
+        version: { type: integer, format: int64 }
+        archived_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateTaskRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        description: { type: string }
+        rank: { type: string }
+        props: { type: object }
+
+    UpdateTaskRequest:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        props: { type: object }
+        rank: { type: string }
+
+    MoveTaskRequest:
+      type: object
+      properties:
+        project_id: { type: string, format: uuid, nullable: true }
+        rank: { type: string }
+
+    Canvas:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        space_id: { type: string, format: uuid, nullable: true }
+        title: { type: string }
+        description: { type: string }
+        props: { type: object }
+        version: { type: integer, format: int64 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateCanvasRequest:
+      type: object
+      properties:
+        title: { type: string }
+        space_id: { type: string, format: uuid }
+
+    UpdateCanvasRequest:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+
+    CanvasObjectKind:
+      type: string
+      enum: [shape, text, image, embed, sticky_note, card]
+
+    CanvasObject:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        canvas_id: { type: string, format: uuid }
+        object_kind: { $ref: "#/components/schemas/CanvasObjectKind" }
+        title: { type: string }
+        x: { type: number }
+        y: { type: number }
+        width: { type: number }
+        height: { type: number }
+        rotation: { type: number }
+        z_index: { type: integer }
+        locked: { type: boolean }
+        visible: { type: boolean }
+        opacity: { type: number }
+        style: { type: object }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateCanvasObjectRequest:
+      type: object
+      properties:
+        object_kind: { $ref: "#/components/schemas/CanvasObjectKind" }
+        title: { type: string }
+        x: { type: number }
+        y: { type: number }
+        width: { type: number }
+        height: { type: number }
+        rotation: { type: number }
+        z_index: { type: integer }
+        style: { type: object }
+
+    UpdateCanvasObjectRequest:
+      type: object
+      properties:
+        title: { type: string }
+        x: { type: number }
+        y: { type: number }
+        width: { type: number }
+        height: { type: number }
+        rotation: { type: number }
+        z_index: { type: integer }
+        locked: { type: boolean }
+        visible: { type: boolean }
+        opacity: { type: number }
+        style: { type: object }
+
+    CanvasConnector:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        canvas_id: { type: string, format: uuid }
+        start_object_id: { type: string, format: uuid }
+        end_object_id: { type: string, format: uuid }
+        shape: { type: string }
+        start_snap_to: { type: string }
+        end_snap_to: { type: string }
+        captions: { type: array, items: {} }
+        style: { type: object }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateCanvasConnectorRequest:
+      type: object
+      required: [start_object_id, end_object_id]
+      properties:
+        start_object_id: { type: string, format: uuid }
+        end_object_id: { type: string, format: uuid }
+        shape: { type: string }
+        start_snap_to: { type: string }
+        end_snap_to: { type: string }
+        captions: { type: array, items: {} }
+        style: { type: object }
+
+    UpdateCanvasConnectorRequest:
+      type: object
+      properties:
+        shape: { type: string }
+        start_snap_to: { type: string }
+        end_snap_to: { type: string }
+        captions: { type: array, items: {} }
+        style: { type: object }
+
+    CanvasCamera:
+      type: object
+      properties:
+        x: { type: number }
+        y: { type: number }
+        zoom: { type: number }
+        updated_at: { type: string, format: date-time }
+
+    PutCanvasCameraRequest:
+      type: object
+      properties:
+        x: { type: number }
+        y: { type: number }
+        zoom: { type: number }
+
+    CanvasTag:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        canvas_id: { type: string, format: uuid }
+        name: { type: string }
+        color: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    CreateCanvasTagRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        color: { type: string }
+
+    File:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        original_name: { type: string }
+        mime_type: { type: string }
+        size_bytes: { type: integer, format: int64 }
+        status: { type: string, enum: [pending, ready, failed] }
+        width: { type: integer, nullable: true }
+        height: { type: integer, nullable: true }
+        duration_ms: { type: integer, nullable: true }
+        page_count: { type: integer, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateUploadRequest:
+      type: object
+      required: [filename, mime_type, size_bytes]
+      properties:
+        filename: { type: string }
+        mime_type: { type: string }
+        size_bytes: { type: integer, format: int64 }
+
+    CreateUploadResponse:
+      type: object
+      properties:
+        upload_id: { type: string, format: uuid }
+        object_key: { type: string }
+        upload_url: { type: string, description: Presigned PUT URL, valid for 15 minutes. }
+        expires_at: { type: string, format: date-time }
+
+    CompleteUploadRequest:
+      type: object
+      properties:
+        checksum: { type: string }
+        etag: { type: string }
+
+    UpdateFileRequest:
+      type: object
+      properties:
+        original_name: { type: string }
+
+    Discussion:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        node_id: { type: string, format: uuid }
+        selection_anchor: { type: object, nullable: true }
+        comment_count: { type: integer }
+        resolved_at: { type: string, format: date-time, nullable: true }
+        resolved_by: { type: string, format: uuid, nullable: true }
+        created_by: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateDiscussionRequest:
+      type: object
+      properties:
+        selection_anchor: { type: object }
+
+    Comment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        discussion_id: { type: string, format: uuid }
+        node_id: { type: string, format: uuid }
+        parent_id: { type: string, format: uuid, nullable: true }
+        body: { type: string }
+        rich_text: { type: array, items: {} }
+        body_format: { type: string }
+        created_by: { type: string, format: uuid, nullable: true }
+        edited_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateCommentRequest:
+      type: object
+      required: [body]
+      properties:
+        body: { type: string }
+        rich_text: { type: array, items: {} }
+        parent_id: { type: string, format: uuid }
+
+    UpdateCommentRequest:
+      type: object
+      properties:
+        body: { type: string }
+        rich_text: { type: array, items: {} }
+
+    Reaction:
+      type: object
+      properties:
+        comment_id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        emoji: { type: string }
+        created_at: { type: string, format: date-time }
+
+    CreateReactionRequest:
+      type: object
+      required: [emoji]
+      properties:
+        emoji: { type: string }
+
+    ShareLink:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        node_id: { type: string, format: uuid }
+        role: { type: string, enum: [view, comment, edit] }
+        password_protected: { type: boolean }
+        include_subtree: { type: boolean }
+        allow_duplicate: { type: boolean }
+        max_uses: { type: integer, nullable: true }
+        use_count: { type: integer }
+        watermark: { type: boolean }
+        expires_at: { type: string, format: date-time, nullable: true }
+        revoked_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    CreateShareLinkRequest:
+      type: object
+      properties:
+        role: { type: string, enum: [view, comment, edit] }
+        password: { type: string }
+        include_subtree: { type: boolean }
+        allow_duplicate: { type: boolean }
+        max_uses: { type: integer, nullable: true }
+        watermark: { type: boolean }
+        expires_at: { type: string, format: date-time }
+
+    CreateShareLinkResponse:
+      allOf:
+        - { $ref: "#/components/schemas/ShareLink" }
+        - type: object
+          properties:
+            token: { type: string, description: Raw share token, returned once. }
+
+    UpdateShareLinkRequest:
+      type: object
+      properties:
+        role: { type: string, enum: [view, comment, edit] }
+        include_subtree: { type: boolean }
+        allow_duplicate: { type: boolean }
+        max_uses: { type: integer, nullable: true }
+        watermark: { type: boolean }
+        expires_at: { type: string, format: date-time }
+
+    PublicResolveResponse:
+      type: object
+      properties:
+        node_id: { type: string, format: uuid }
+        type: { type: string }
+        title: { type: string }
+        role: { type: string }
+
+    PublishRequest:
+      type: object
+      required: [slug]
+      properties:
+        slug: { type: string }
+        indexed: { type: boolean }
+
+    PublishedPage:
+      type: object
+      properties:
+        node_id: { type: string, format: uuid }
+        slug: { type: string }
+        title: { type: string }
+        indexed: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    Notification:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        actor_id: { type: string, format: uuid, nullable: true }
+        subject_node_id: { type: string, format: uuid, nullable: true }
+        type: { type: string }
+        title: { type: string }
+        body: { type: string }
+        payload: { type: object }
+        read_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    ActivityEvent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        node_id: { type: string, format: uuid, nullable: true }
+        actor_id: { type: string, format: uuid, nullable: true }
+        event_type: { type: string }
+        summary: { type: string }
+        payload: { type: object }
+        created_at: { type: string, format: date-time }
+
+    SearchResult:
+      type: object
+      properties:
+        node_id: { type: string, format: uuid }
+        type: { type: string }
+        title: { type: string }
+        rank: { type: number }
+
+    SavedSearch:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        query: { type: string }
+        filters: { type: object }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateSavedSearchRequest:
+      type: object
+      required: [name, query]
+      properties:
+        name: { type: string }
+        query: { type: string }
+        filters: { type: object }
+
+    Automation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        enabled: { type: boolean }
+        trigger_type: { type: string }
+        trigger: { type: object }
+        conditions: { type: array, items: {} }
+        last_run_at: { type: string, format: date-time, nullable: true }
+        last_status: { type: string, nullable: true }
+        run_count: { type: integer, format: int64 }
+        version: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    AutomationStep:
+      type: object
+      required: [type, rank]
+      properties:
+        type: { type: string }
+        config: { type: object }
+        rank: { type: integer }
+
+    CreateAutomationRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        trigger_type: { type: string }
+        trigger: { type: object }
+        conditions: { type: array, items: {} }
+        steps:
+          type: array
+          items: { $ref: "#/components/schemas/AutomationStep" }
+
+    UpdateAutomationRequest:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        trigger: { type: object }
+        conditions: { type: array, items: {} }
+
+    AutomationRun:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        automation_id: { type: string, format: uuid }
+        status: { type: string, enum: [queued, running, succeeded, failed] }
+        trigger_payload: { type: object }
+        error: { type: string, nullable: true }
+        started_at: { type: string, format: date-time, nullable: true }
+        finished_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    RunRequest:
+      type: object
+      properties:
+        payload: { type: object }
+
+    Webhook:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        name: { type: string }
+        url: { type: string }
+        events: { type: array, items: { type: string } }
+        enabled: { type: boolean }
+        failure_count: { type: integer }
+        last_success_at: { type: string, format: date-time, nullable: true }
+        last_failure_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateWebhookRequest:
+      type: object
+      required: [name, url]
+      properties:
+        name: { type: string }
+        url: { type: string, description: "Must be https://." }
+        events: { type: array, items: { type: string } }
+
+    CreateWebhookResponse:
+      allOf:
+        - { $ref: "#/components/schemas/Webhook" }
+        - type: object
+          properties:
+            secret: { type: string, description: Raw signing secret, returned once. }
+
+    UpdateWebhookRequest:
+      type: object
+      properties:
+        name: { type: string }
+        url: { type: string }
+        events: { type: array, items: { type: string } }
+        enabled: { type: boolean }
+
+    WebhookDelivery:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        event_type: { type: string }
+        payload: { type: object }
+        status: { type: string, enum: [pending, delivered, failed] }
+        attempt_count: { type: integer }
+        response_status: { type: integer, nullable: true }
+        delivered_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    Presence:
+      type: object
+      properties:
+        user_id: { type: string, format: uuid }
+        node_id: { type: string, format: uuid }
+        selection: { type: object, nullable: true }
+        cursor: { type: object, nullable: true }
+        viewport: { type: object, nullable: true }
+        last_seen_at: { type: string, format: date-time }
+
+    PutPresenceRequest:
+      type: object
+      properties:
+        selection: { type: object }
+        cursor: { type: object }
+        viewport: { type: object }

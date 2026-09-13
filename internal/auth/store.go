@@ -272,6 +272,39 @@ func (s store) revokeAuthTokens(ctx context.Context, userID uuid.UUID, purpose s
 	return err
 }
 
+func (s store) listSessions(ctx context.Context, userID uuid.UUID) ([]SessionSummary, error) {
+	rows, err := s.db.Query(ctx, `
+		SELECT id, COALESCE(user_agent, ''), COALESCE(host(ip), ''), COALESCE(country, ''), created_at, last_seen_at, expires_at
+		FROM sessions
+		WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now()
+		ORDER BY last_seen_at DESC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]SessionSummary, 0)
+	for rows.Next() {
+		var sess SessionSummary
+		if err := rows.Scan(&sess.ID, &sess.UserAgent, &sess.IP, &sess.Country, &sess.CreatedAt, &sess.LastSeenAt, &sess.ExpiresAt); err != nil {
+			return nil, err
+		}
+		out = append(out, sess)
+	}
+	return out, rows.Err()
+}
+
+func (s store) revokeSessionForUser(ctx context.Context, id, userID uuid.UUID, reason string) (bool, error) {
+	tag, err := s.db.Exec(ctx, `
+		UPDATE sessions SET revoked_at = now(), revoke_reason = $3
+		WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL
+	`, id, userID, reason)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
 func nullIfEmpty(s string) any {
 	if s == "" {
 		return nil

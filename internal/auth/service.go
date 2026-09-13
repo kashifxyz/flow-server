@@ -272,6 +272,34 @@ func (s *Service) LookupSession(ctx context.Context, rawToken string) (Session, 
 	return sess, user, nil
 }
 
+type SessionSummary struct {
+	ID         uuid.UUID
+	UserAgent  string
+	IP         string
+	Country    string
+	CreatedAt  time.Time
+	LastSeenAt time.Time
+	ExpiresAt  time.Time
+}
+
+// ListSessions returns userID's active (non-revoked, unexpired) sessions,
+// most recently active first.
+func (s *Service) ListSessions(ctx context.Context, userID uuid.UUID) ([]SessionSummary, error) {
+	return s.store.listSessions(ctx, userID)
+}
+
+// RevokeSession revokes sessionID only if it belongs to userID.
+func (s *Service) RevokeSession(ctx context.Context, userID, sessionID uuid.UUID) error {
+	ok, err := s.store.revokeSessionForUser(ctx, sessionID, userID, "user_revoked")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrSessionNotFound
+	}
+	return nil
+}
+
 func (s *Service) ValidCSRF(sess Session, headerToken, cookieToken string) bool {
 	if headerToken == "" || cookieToken == "" || headerToken != cookieToken {
 		return false

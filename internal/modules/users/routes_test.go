@@ -8,10 +8,10 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func TestMeRequiresAuth(t *testing.T) {
+func TestUpdateProfileRequiresAuth(t *testing.T) {
 	mux := http.NewServeMux()
 	Register(mux, Module{Log: zerolog.Nop()})
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/users/me", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {

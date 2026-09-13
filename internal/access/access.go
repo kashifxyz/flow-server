@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/kashifxyz/flow-server/internal/httperr"
+	"github.com/kashifxyz/flow-server/internal/utils/httperr"
 )
 
 func RequireMember(ctx context.Context, db *pgxpool.Pool, workspaceID, userID uuid.UUID) error {

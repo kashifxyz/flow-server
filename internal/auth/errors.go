@@ -13,4 +13,5 @@ var (
 	ErrPasswordReused     = errors.New("password reused")
 	ErrUnauthenticated    = errors.New("unauthenticated")
 	ErrCSRF               = errors.New("csrf failed")
+	ErrSessionNotFound    = errors.New("session not found")
 )

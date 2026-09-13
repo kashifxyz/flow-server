@@ -1,47 +1,65 @@
 package models
 
-import "github.com/kashifxyz/flow-server/internal/auth"
+import (
+	"encoding/json"
+	"time"
+)
 
-type User struct {
-	ID            string `json:"id"`
-	Email         string `json:"email"`
-	DisplayName   string `json:"display_name"`
-	EmailVerified bool   `json:"email_verified"`
+type Profile struct {
+	ID              string  `json:"id"`
+	Email           string  `json:"email"`
+	DisplayName     string  `json:"display_name"`
+	GivenName       string  `json:"given_name"`
+	FamilyName      string  `json:"family_name"`
+	Username        *string `json:"username,omitempty"`
+	Locale          string  `json:"locale"`
+	Timezone        string  `json:"timezone"`
+	WeekStartsOn    int16   `json:"week_starts_on"`
+	DateFormat      string  `json:"date_format"`
+	TimeFormat      string  `json:"time_format"`
+	Theme           string  `json:"theme"`
+	Bio             string  `json:"bio"`
+	AvatarObjectKey *string `json:"avatar_object_key,omitempty"`
 }
 
-func UserFromAuth(u auth.User) User {
-	return User{
-		ID:            u.ID.String(),
-		Email:         u.Email,
-		DisplayName:   u.DisplayName,
-		EmailVerified: u.EmailVerified(),
-	}
+type UpdateProfileRequest struct {
+	DisplayName  *string `json:"display_name"`
+	GivenName    *string `json:"given_name"`
+	FamilyName   *string `json:"family_name"`
+	Username     *string `json:"username"`
+	Locale       *string `json:"locale"`
+	Timezone     *string `json:"timezone"`
+	WeekStartsOn *int16  `json:"week_starts_on"`
+	DateFormat   *string `json:"date_format"`
+	TimeFormat   *string `json:"time_format"`
+	Theme        *string `json:"theme"`
+	Bio          *string `json:"bio"`
 }
 
-type RegisterRequest struct {
-	Email       string `json:"email"`
-	Password    string `json:"password"`
-	DisplayName string `json:"display_name"`
+type Preferences struct {
+	Editor        json.RawMessage `json:"editor"`
+	Notifications json.RawMessage `json:"notifications"`
+	Accessibility json.RawMessage `json:"accessibility"`
+	Shortcuts     json.RawMessage `json:"shortcuts"`
+	Extras        json.RawMessage `json:"extras"`
+	UpdatedAt     time.Time       `json:"updated_at"`
 }
 
-type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+type UpdatePreferencesRequest struct {
+	Editor        json.RawMessage `json:"editor"`
+	Notifications json.RawMessage `json:"notifications"`
+	Accessibility json.RawMessage `json:"accessibility"`
+	Shortcuts     json.RawMessage `json:"shortcuts"`
+	Extras        json.RawMessage `json:"extras"`
 }
 
-type EmailRequest struct {
-	Email string `json:"email"`
-}
-
-type TokenRequest struct {
-	Token string `json:"token"`
-}
-
-type ResetPasswordRequest struct {
-	Token    string `json:"token"`
-	Password string `json:"password"`
-}
-
-type OK struct {
-	OK bool `json:"ok"`
+type Session struct {
+	ID         string    `json:"id"`
+	UserAgent  string    `json:"user_agent"`
+	IP         string    `json:"ip"`
+	Country    string    `json:"country"`
+	CreatedAt  time.Time `json:"created_at"`
+	LastSeenAt time.Time `json:"last_seen_at"`
+	ExpiresAt  time.Time `json:"expires_at"`
+	Current    bool      `json:"current"`
 }

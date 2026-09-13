@@ -21,11 +21,3 @@ func MustID() uuid.UUID {
 	}
 	return id
 }
-
-func MustID() uuid.UUID {
-	id, err := NewID()
-	if err != nil {
-		panic(err)
-	}
-	return id
-}

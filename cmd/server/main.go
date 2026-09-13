@@ -17,7 +17,7 @@ import (
 	"github.com/kashifxyz/flow-server/internal/database"
 	"github.com/kashifxyz/flow-server/internal/jobs"
 	"github.com/kashifxyz/flow-server/internal/modules/health"
-	"github.com/kashifxyz/flow-server/internal/modules/users"
+	"github.com/kashifxyz/flow-server/internal/realtime"
 	"github.com/kashifxyz/flow-server/internal/routes"
 	"github.com/kashifxyz/flow-server/pkg/logger"
 	"github.com/kashifxyz/flow-server/pkg/mail"
@@ -117,20 +117,21 @@ func run(args []string) error {
 		return err
 	}
 	sessions := &auth.Sessions{Service: authSvc, Log: log}
+	hub := realtime.NewHub()
 
 	handler := routes.New(routes.Deps{
-		Config:   cfg,
-		Log:      log,
-		Sessions: sessions,
+		Config:        cfg,
+		Log:           log,
+		DB:            db,
+		S3:            s3Client,
+		Hub:           hub,
+		Sessions:      sessions,
+		AuthService:   authSvc,
+		SecureCookies: cfg.IsProd() || strings.HasPrefix(cfg.URL, "https://"),
 		Health: health.Module{
 			DB:    db,
 			Redis: rdb,
 			Log:   log,
-		},
-		Users: users.Module{
-			Auth:          authSvc,
-			SecureCookies: cfg.IsProd() || strings.HasPrefix(cfg.URL, "https://"),
-			Log:           log,
 		},
 	})
 
@@ -163,6 +164,7 @@ func run(args []string) error {
 	}
 
 	stop()
+	hub.Shutdown() // WebSocket connections are hijacked; http.Server.Shutdown never sees them
 	shutCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownWait)
 	defer cancel()
 	if err := srv.Shutdown(shutCtx); err != nil {
