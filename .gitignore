@@ -1,0 +1,7 @@
+# binaries
+main
+flow-server
+bin/
+
+# local env
+.env
