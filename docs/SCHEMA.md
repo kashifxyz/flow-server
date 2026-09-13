@@ -33,12 +33,13 @@ goose -dir migrations postgres "host=localhost port=5432 dbname=flow sslmode=dis
 | Primary keys | `uuid`, `uuidv7()` |
 | Time | UTC `timestamptz` |
 | JSON | `jsonb` with empty-object/array defaults |
-| Rank / order | fractional `text` (e.g. LexoRank), not integer gaps |
+| Rank / order | `text` LexoRank for user-reorderable lists (`nodes.rank`, pins, fields). `integer` for system order (`z_index`, `automation_steps.rank`, `classification_labels.rank`, vertex `seq`). |
 | Email uniqueness | `UNIQUE (lower(email))` where not deleted |
 | Token storage | SHA-256 (or equivalent) hash in `*_hash` columns |
 | 1:1 satellites | `id uuid PRIMARY KEY REFERENCES nodes(id) ON DELETE CASCADE` |
 | Extensions | `pg_trgm` for title search |
-| App-maintained | `node_closure`, `search_documents`, denormalized counts, `storage_used_bytes` |
+| App-maintained | `updated_at`, `node_closure`, `search_documents` tsvectors, denormalized counts, `storage_used_bytes` |
+| `created_by` NULL | Allowed. System-generated **or** user later deleted (`ON DELETE SET NULL`). Go sets it on user-created inserts. |
 
 **Node `type` values (Go):** `page`, `block`, `database`, `field`, `record`, `view`, `project`, `task`, `file`, `canvas`, `object`, `comment`, `dashboard`, `frame`, `connector`, `group`.
 
@@ -389,7 +390,7 @@ Those last four rows are why a honest schema score is **94/100**, not 100. Persi
 
 **Create a page:** insert `nodes`; insert self-row in `node_closure`; optional `yjs_documents` + empty snapshot; index `search_documents`.
 
-**Move a node:** update `parent_id`/`rank`; rebuild closure subtree in a transaction.
+**Move a node:** update `parent_id`/`rank`; rebuild `node_closure` for the subtree in the same transaction (see §11.2).
 
 **Edit a cell:** update `field_values`; insert `field_value_revisions`; upsert `unique_field_values` if unique; enqueue `formula_jobs` for dependents; `event_outbox`.
 
@@ -418,7 +419,70 @@ Do not add more indexes without `EXPLAIN ANALYZE` on a real workload (`PROJECT-I
 
 ---
 
-## 11. Related documents
+## 11. Application maintenance contracts
+
+These are **not** PostgreSQL triggers. Flow does not use triggers, trigger functions, or `CHECK` constraints. Go owns the following. If a writer skips them, Postgres will still accept the row.
+
+### 11.1 `updated_at`
+
+`DEFAULT now()` fires on **INSERT only**. Every `UPDATE` must set `updated_at` in SQL.
+
+Do not add `set_updated_at()` triggers. They hide missed writes, override intentional timestamps (imports, CRDT apply time, tests), and violate the no-trigger rule.
+
+`nodes.last_edited_at` is the human edit time. `nodes.updated_at` is any row mutation. Set both on user edits; set only `updated_at` for bookkeeping.
+
+### 11.2 `node_closure`
+
+`parent_id` is the source-of-truth edge. Closure is the materialized ancestor index.
+
+**Self row:** every node has `(ancestor_id = id, descendant_id = id, depth = 0)`.
+
+**Create** node N under parent P, same transaction as `INSERT nodes`:
+
+1. Insert the self row for N.
+2. Copy P’s ancestors onto N:  
+   `INSERT INTO node_closure (ancestor_id, descendant_id, workspace_id, depth)`  
+   `SELECT ancestor_id, N, workspace_id, depth + 1 FROM node_closure WHERE descendant_id = P`.
+
+**Move** subtree N to parent P′:
+
+1. Let D = descendants of N including N.
+2. Delete closure rows where `descendant_id IN D` and `ancestor_id NOT IN D`.
+3. If P′ is set, insert every ancestor of P′ (including P′) crossed with every D, with depths added.
+4. Update `nodes.parent_id` and `root_id` if the tree root changed.
+
+**Hard delete:** `ON DELETE CASCADE` from `nodes`. **Soft delete** leaves closure intact so trash restore still has a parent.
+
+**Test invariant:** if `parent_id = P`, closure contains `(P, N, depth = 1)` and every ancestor of P is an ancestor of N at `depth + 1`.
+
+### 11.3 `search_documents` tsvectors
+
+Go writes `title`, `body`, `language`, then:
+
+```text
+title_vector = to_tsvector(language::regconfig, title)
+document     = to_tsvector(language::regconfig, title || ' ' || body)
+```
+
+`language` must be a real Postgres text-search config (`simple`, `english`, …). No tsvector trigger.
+
+### 11.4 `block_flavours` vs `nodes.flavour`
+
+`nodes.flavour` + `flavour_version` name the editor schema. `block_flavours` holds the JSON schema. Go inserts registry rows before production nodes use that flavour. Not an FK so experiments do not need a migration.
+
+### 11.5 High-growth tables (partitioning)
+
+Do **not** range-partition `document_updates` while `document_snapshots.last_update_id` and compaction reference `document_updates(id)`. Partitioned unique constraints must include the partition key, which breaks a simple `id` FK.
+
+Archive instead: `audit_log_archives`, snapshot `expires_at`, `document_compactions`, `file_tombstones`. When `audit_logs` / `login_attempts` / `activity_events` are large, partition **those** (no inbound FKs on `id`) by `RANGE (created_at)`, or export to object storage.
+
+### 11.6 Status `text` columns
+
+No `CHECK`. Go validates `files.status`, `workspace_members.seat_type`, `jobs.status`, and the rest. Invalid values are application bugs.
+
+---
+
+## 12. Related documents
 
 - `PROJECT-INFO.md` — product and architecture
 - `DEPENDENCIES.md` — pgx, goose, no ORM, email+password only
