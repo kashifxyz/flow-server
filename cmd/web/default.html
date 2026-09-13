@@ -4,8 +4,33 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Flow</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f6fb;
+        --text: #0f0d16;
+        --muted: #667085;
+        --accent: #6d28d9;
+      }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        font-family: Inter, system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        display: grid;
+        place-items: center;
+      }
+      main { text-align: center; padding: 2rem; }
+      h1 { margin: 0 0 0.5rem; letter-spacing: -0.04em; }
+      p { margin: 0; color: var(--muted); max-width: 36rem; }
+      code { color: var(--accent); font-family: ui-monospace, monospace; }
+    </style>
   </head>
   <body>
-    <p>Flow</p>
+    <main>
+      <h1>Flow</h1>
+      <p>UI build not found. Run <code>pnpm build</code> in <code>flow-ui</code> to write <code>cmd/web/static/index.html</code>.</p>
+    </main>
   </body>
 </html>

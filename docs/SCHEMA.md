@@ -202,13 +202,13 @@ email, password_hash, password_algo, password_params, display_name, given_name, 
 
 **databases** — 1:1 node. is_inline, primary_field_id (FK added after fields), row_count, schema_version.
 
-**fields** — catalog. type, options jsonb, default_value, is_primary, is_required, is_unique, is_computed, is_hidden, is_valid, is_reversed, prefers_single_record, formula, formula_ast, result_type, result_options, compute_error, last_computed_at, precision, currency, duration_format, rating_max, linked_database_id, inverse_field_id, relation_field_id, lookup_field_id, rollup_field_id, rollup_function, referenced_field_ids[], rank.
+**fields** — catalog. type, options jsonb, default_value, is_primary, is_required, is_unique, is_computed, is_hidden, is_valid, is_reversed, prefers_single_record, formula, formula_ast, result_type, result_options, compute_error, last_computed_at, numeric_precision, currency, duration_format, rating_max, linked_database_id, inverse_field_id, relation_field_id, lookup_field_id, rollup_field_id, rollup_function, referenced_field_ids[], rank.
 
 **field_options** — select/status choices. Unique (field_id, key).
 
 **field_dependencies** — PK (field_id, depends_on_field_id, kind). Formula/lookup/rollup DAG.
 
-**relation_constraints** — PK field_id. from_database_id, to_database_id, allow_multiple, symmetric.
+**relation_constraints** — PK field_id. from_database_id, to_database_id, allow_multiple, is_symmetric.
 
 **views** — filter/sorts/groups jsonb, visible/frozen field id arrays, column_widths, calendar/board/timeline/map field FKs, owner_user_id, is_default, is_personal, is_locked, row_height, color_rules.
 
