@@ -83,6 +83,19 @@ type Invite struct {
 	CreatedAt  time.Time  `json:"created_at"`
 }
 
+// MyInvite is a pending invite as seen by the invitee (not the workspace admin) —
+// surfaced in-app via GET /invites/mine so accepting doesn't depend on the invitee
+// having received or clicked the emailed link.
+type MyInvite struct {
+	ID            string    `json:"id"`
+	WorkspaceID   string    `json:"workspace_id"`
+	WorkspaceName string    `json:"workspace_name"`
+	Role          string    `json:"role"`
+	InvitedByName *string   `json:"invited_by_name,omitempty"`
+	ExpiresAt     time.Time `json:"expires_at"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
 type CreateInviteRequest struct {
 	Email    string `json:"email"`
 	Role     string `json:"role"`

@@ -318,7 +318,7 @@ func (s *Service) VerifyEmail(ctx context.Context, rawToken string, meta Request
 	if err := s.store.consumeAuthToken(ctx, tok.ID); err != nil {
 		return err
 	}
-	_ = s.store.revokeAuthTokens(ctx, user.ID, PurposeEmailVerify)
+	_ = s.store.revokeAuthTokens(ctx, s.store.db, user.ID, PurposeEmailVerify)
 	uid := user.ID
 	return s.store.insertAuthEvent(ctx, s.store.db, &uid, nil, "email_verified", meta)
 }
@@ -389,7 +389,7 @@ func (s *Service) ResetPassword(ctx context.Context, rawToken, password string, 
 	if err := s.store.consumeAuthToken(ctx, tok.ID); err != nil {
 		return err
 	}
-	_ = s.store.revokeAuthTokens(ctx, user.ID, PurposePasswordReset)
+	_ = s.store.revokeAuthTokens(ctx, s.store.db, user.ID, PurposePasswordReset)
 	if err := s.store.revokeUserSessions(ctx, user.ID, "password_reset"); err != nil {
 		return err
 	}
@@ -398,14 +398,19 @@ func (s *Service) ResetPassword(ctx context.Context, rawToken, password string, 
 }
 
 func (s *Service) issueEmailToken(ctx context.Context, user User, purpose, template, path string, ttl time.Duration, expiresLabel, eventType string, meta RequestMeta) error {
-	if err := s.store.revokeAuthTokens(ctx, user.ID, purpose); err != nil {
-		return err
-	}
 	raw, err := RandomToken()
 	if err != nil {
 		return err
 	}
-	if err := s.store.insertAuthToken(ctx, s.store.db, user.ID, purpose, HashToken(raw), time.Now().Add(ttl), meta); err != nil {
+	tokenHash := HashToken(raw)
+	expires := time.Now().Add(ttl)
+	err = s.store.withTx(ctx, func(tx pgx.Tx) error {
+		if err := s.store.revokeAuthTokens(ctx, tx, user.ID, purpose); err != nil {
+			return err
+		}
+		return s.store.insertAuthToken(ctx, tx, user.ID, purpose, tokenHash, expires, meta)
+	})
+	if err != nil {
 		return err
 	}
 	if eventType != "" {
@@ -485,6 +490,49 @@ func (s *Service) sendMail(ctx context.Context, to, template, path, raw, expires
 	}); err != nil {
 		s.log.Error().Err(err).Str("template", template).Msg("auth mail send failed")
 	}
+}
+
+// ChangePassword lets an already-authenticated user change their own password
+// by proving they know the current one — distinct from ResetPassword, which
+// authorizes via a one-time emailed token instead and (appropriately, for a
+// recovery flow) revokes every session. Here the current session stays alive;
+// every other session is revoked as a security measure.
+func (s *Service) ChangePassword(ctx context.Context, userID, currentSessionID uuid.UUID, currentPassword, newPassword string, meta RequestMeta) error {
+	if err := ValidatePassword(newPassword); err != nil {
+		return err
+	}
+	user, err := s.store.findUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	ok, err := ComparePassword(user.PasswordHash, currentPassword)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrInvalidCredentials
+	}
+	reused, err := s.passwordReused(ctx, user, newPassword)
+	if err != nil {
+		return err
+	}
+	if reused {
+		return ErrPasswordReused
+	}
+	hash, err := HashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+	if err := s.store.updatePassword(ctx, user.ID, hash, passwordParamsJSON); err != nil {
+		return err
+	}
+	if err := s.store.insertPasswordHistory(ctx, s.store.db, user.ID, hash); err != nil {
+		return err
+	}
+	if err := s.store.revokeUserSessionsExcept(ctx, user.ID, currentSessionID, "password_changed"); err != nil {
+		return err
+	}
+	return s.store.insertAuthEvent(ctx, s.store.db, &userID, nil, "password_changed", meta)
 }
 
 func isUniqueViolation(err error) bool {

@@ -18,7 +18,9 @@ type Module struct {
 
 func Register(mux *http.ServeMux, m Module) {
 	h := handlers.New(services.New(m.DB, m.Auth), m.Log)
+	mux.HandleFunc("GET /api/v1/users/me", auth.RequireUser(h.GetProfile))
 	mux.HandleFunc("PATCH /api/v1/users/me", auth.RequireUser(h.UpdateProfile))
+	mux.HandleFunc("POST /api/v1/users/me/password", auth.RequireUser(h.ChangePassword))
 	mux.HandleFunc("GET /api/v1/users/me/preferences", auth.RequireUser(h.GetPreferences))
 	mux.HandleFunc("PATCH /api/v1/users/me/preferences", auth.RequireUser(h.UpdatePreferences))
 	mux.HandleFunc("GET /api/v1/users/me/sessions", auth.RequireUser(h.ListSessions))

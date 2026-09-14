@@ -7,16 +7,19 @@ import (
 	"github.com/kashifxyz/flow-server/internal/auth"
 	"github.com/kashifxyz/flow-server/internal/modules/workspace/handlers"
 	"github.com/kashifxyz/flow-server/internal/modules/workspace/services"
+	"github.com/kashifxyz/flow-server/pkg/mail"
 	"github.com/rs/zerolog"
 )
 
 type Module struct {
-	DB  *pgxpool.Pool
-	Log zerolog.Logger
+	DB        *pgxpool.Pool
+	Mail      mail.Sender
+	PublicURL string
+	Log       zerolog.Logger
 }
 
 func Register(mux *http.ServeMux, m Module) {
-	h := handlers.New(services.New(m.DB), m.Log)
+	h := handlers.New(services.New(m.DB, m.Mail, m.PublicURL), m.Log)
 
 	mux.HandleFunc("GET /api/v1/workspaces", auth.RequireUser(h.List))
 	mux.HandleFunc("POST /api/v1/workspaces", auth.RequireUser(h.Create))
@@ -34,6 +37,8 @@ func Register(mux *http.ServeMux, m Module) {
 	mux.HandleFunc("POST /api/v1/workspaces/{workspaceID}/invites", auth.RequireUser(h.CreateInvite))
 	mux.HandleFunc("DELETE /api/v1/workspaces/{workspaceID}/invites/{inviteID}", auth.RequireUser(h.RevokeInvite))
 	mux.HandleFunc("POST /api/v1/invites/{token}/accept", auth.RequireUser(h.AcceptInvite))
+	mux.HandleFunc("GET /api/v1/invites/mine", auth.RequireUser(h.ListMyInvites))
+	mux.HandleFunc("POST /api/v1/workspaces/{workspaceID}/invites/{inviteID}/accept", auth.RequireUser(h.AcceptInviteByID))
 
 	mux.HandleFunc("GET /api/v1/workspaces/{workspaceID}/roles", auth.RequireUser(h.ListRoles))
 	mux.HandleFunc("POST /api/v1/workspaces/{workspaceID}/roles", auth.RequireUser(h.CreateRole))

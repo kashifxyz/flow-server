@@ -187,7 +187,7 @@ func SoftDelete(ctx context.Context, tx pgx.Tx, id, userID uuid.UUID, retentionD
 	}
 	tag, err := tx.Exec(ctx, `
 		UPDATE nodes
-		SET deleted_at = now(), deleted_by = $2, restore_until = now() + ($3 || ' days')::interval, updated_at = now()
+		SET deleted_at = now(), deleted_by = $2, restore_until = now() + ($3 * interval '1 day'), updated_at = now()
 		WHERE id = $1 AND deleted_at IS NULL AND purged_at IS NULL
 	`, id, userID, retentionDays)
 	if err != nil {

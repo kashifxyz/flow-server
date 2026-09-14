@@ -31,6 +31,28 @@ func currentSessionID(r *http.Request) uuid.UUID {
 	return sess.ID
 }
 
+func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) {
+	out, err := h.Svc.GetProfile(r.Context(), actor(r).ID)
+	if err != nil {
+		httperr.Write(w, h.Log, err)
+		return
+	}
+	utils.WriteJSON(w, http.StatusOK, out)
+}
+
+func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	var in models.ChangePasswordRequest
+	if err := utils.DecodeJSON(w, r, &in); err != nil {
+		httperr.Write(w, h.Log, httperr.ErrInvalid)
+		return
+	}
+	if err := h.Svc.ChangePassword(r.Context(), actor(r).ID, currentSessionID(r), in, auth.MetaFromRequest(r)); err != nil {
+		httperr.Write(w, h.Log, err)
+		return
+	}
+	utils.WriteJSON(w, http.StatusOK, models.OKResponse{OK: true})
+}
+
 func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	var in models.UpdateProfileRequest
 	if err := utils.DecodeJSON(w, r, &in); err != nil {

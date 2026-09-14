@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -74,16 +75,54 @@ func MetaFromRequest(r *http.Request) RequestMeta {
 	}
 }
 
-func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		first := strings.TrimSpace(strings.Split(xff, ",")[0])
-		if first != "" {
-			return first
+var trustedProxies atomic.Pointer[[]netip.Prefix]
+
+// SetTrustedProxies configures the reverse-proxy CIDR ranges clientIP is
+// willing to trust X-Forwarded-For from. Call it once at startup (e.g. from
+// config); an empty/unset list (the default) means no proxy is trusted and
+// X-Forwarded-For is never honored, since it is otherwise trivially spoofable
+// by any client and would poison login_attempts/auth_events with fake IPs.
+func SetTrustedProxies(prefixes []netip.Prefix) {
+	cp := append([]netip.Prefix(nil), prefixes...)
+	trustedProxies.Store(&cp)
+}
+
+func isTrustedProxy(host string, proxies []netip.Prefix) bool {
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return false
+	}
+	for _, p := range proxies {
+		if p.Contains(addr) {
+			return true
 		}
 	}
+	return false
+}
+
+func clientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		host = r.RemoteAddr
+	}
+	proxies := trustedProxies.Load()
+	if proxies != nil && len(*proxies) > 0 && isTrustedProxy(host, *proxies) {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			hops := strings.Split(xff, ",")
+			for i := len(hops) - 1; i >= 0; i-- {
+				candidate := strings.TrimSpace(hops[i])
+				if candidate == "" {
+					continue
+				}
+				// Skip hops that are themselves trusted proxies and keep walking
+				// left until we reach the right-most hop the proxy chain didn't
+				// vouch for — that is the real, un-spoofable client address.
+				if isTrustedProxy(candidate, *proxies) {
+					continue
+				}
+				return candidate
+			}
+		}
 	}
 	return host
 }

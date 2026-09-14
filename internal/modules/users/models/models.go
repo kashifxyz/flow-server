@@ -22,6 +22,15 @@ type Profile struct {
 	AvatarObjectKey *string `json:"avatar_object_key,omitempty"`
 }
 
+type OKResponse struct {
+	OK bool `json:"ok"`
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
 type UpdateProfileRequest struct {
 	DisplayName  *string `json:"display_name"`
 	GivenName    *string `json:"given_name"`

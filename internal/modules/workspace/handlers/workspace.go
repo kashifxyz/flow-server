@@ -246,6 +246,34 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	utils.WriteJSON(w, http.StatusOK, models.OKResponse{OK: true})
 }
 
+func (h *Handler) ListMyInvites(w http.ResponseWriter, r *http.Request) {
+	out, err := h.Svc.ListMyInvites(r.Context(), userID(r).Email)
+	if err != nil {
+		httperr.Write(w, h.Log, err)
+		return
+	}
+	utils.WriteJSON(w, http.StatusOK, out)
+}
+
+func (h *Handler) AcceptInviteByID(w http.ResponseWriter, r *http.Request) {
+	wsID, err := utils.PathID(r, "workspaceID")
+	if err != nil {
+		httperr.Write(w, h.Log, httperr.ErrInvalid)
+		return
+	}
+	inviteID, err := utils.PathID(r, "inviteID")
+	if err != nil {
+		httperr.Write(w, h.Log, httperr.ErrInvalid)
+		return
+	}
+	actor := userID(r)
+	if err := h.Svc.AcceptInviteByID(r.Context(), wsID, inviteID, actor.ID, actor.Email); err != nil {
+		httperr.Write(w, h.Log, err)
+		return
+	}
+	utils.WriteJSON(w, http.StatusOK, models.OKResponse{OK: true})
+}
+
 func (h *Handler) ListRoles(w http.ResponseWriter, r *http.Request) {
 	wsID, err := utils.PathID(r, "workspaceID")
 	if err != nil {

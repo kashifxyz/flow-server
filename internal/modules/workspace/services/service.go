@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"strings"
 	"time"
 
@@ -14,14 +15,17 @@ import (
 	"github.com/kashifxyz/flow-server/internal/modules/workspace/models"
 	"github.com/kashifxyz/flow-server/internal/utils"
 	"github.com/kashifxyz/flow-server/internal/utils/httperr"
+	"github.com/kashifxyz/flow-server/pkg/mail"
 )
 
 type Service struct {
-	DB *pgxpool.Pool
+	DB        *pgxpool.Pool
+	Mail      mail.Sender
+	PublicURL string
 }
 
-func New(db *pgxpool.Pool) *Service {
-	return &Service{DB: db}
+func New(db *pgxpool.Pool, sender mail.Sender, publicURL string) *Service {
+	return &Service{DB: db, Mail: sender, PublicURL: publicURL}
 }
 
 var memberRoles = map[string]bool{"owner": true, "admin": true, "member": true, "guest": true}
@@ -64,7 +68,7 @@ func (s *Service) Create(ctx context.Context, ownerID uuid.UUID, in models.Creat
 
 func (s *Service) List(ctx context.Context, userID uuid.UUID) ([]models.Workspace, error) {
 	rows, err := s.DB.Query(ctx, `
-		SELECT `+workspaceCols+`
+		SELECT `+workspaceColsW+`
 		FROM workspaces w
 		JOIN workspace_members m ON m.workspace_id = w.id
 		WHERE m.user_id = $1 AND m.status = 'active' AND w.deleted_at IS NULL
@@ -164,7 +168,7 @@ func (s *Service) ListMembers(ctx context.Context, workspaceID, userID uuid.UUID
 		SELECT m.id, m.user_id, u.email, u.display_name, m.role, m.role_id, m.seat_type, m.status, m.joined_at, m.created_at
 		FROM workspace_members m
 		JOIN users u ON u.id = m.user_id
-		WHERE m.workspace_id = $1
+		WHERE m.workspace_id = $1 AND m.status <> 'removed'
 		ORDER BY m.created_at
 	`, workspaceID)
 	if err != nil {
@@ -370,7 +374,32 @@ func (s *Service) CreateInvite(ctx context.Context, workspaceID, actorID uuid.UU
 		gid := groupID.String()
 		inv.GroupID = &gid
 	}
-	return inv, raw, err
+	if err != nil {
+		return inv, raw, err
+	}
+	s.sendInviteMail(ctx, workspaceID, email, raw)
+	return inv, raw, nil
+}
+
+// sendInviteMail is best-effort: a delivery failure must not fail invite creation
+// (the raw token is already returned to the admin in the API response either way).
+func (s *Service) sendInviteMail(ctx context.Context, workspaceID uuid.UUID, toEmail, rawToken string) {
+	if s.Mail == nil {
+		return
+	}
+	var workspaceName string
+	if err := s.DB.QueryRow(ctx, `SELECT name FROM workspaces WHERE id = $1`, workspaceID).Scan(&workspaceName); err != nil {
+		workspaceName = "a Flow workspace"
+	}
+	link := s.PublicURL + "/invite?token=" + url.QueryEscape(rawToken)
+	_ = s.Mail.Send(ctx, mail.Message{
+		To:       toEmail,
+		Template: mail.TemplateWorkspaceInvite,
+		Payload: map[string]any{
+			"link":      link,
+			"workspace": workspaceName,
+		},
+	})
 }
 
 func (s *Service) RevokeInvite(ctx context.Context, workspaceID, inviteID, actorID uuid.UUID) error {
@@ -410,6 +439,66 @@ func (s *Service) AcceptInvite(ctx context.Context, token string, userID uuid.UU
 	if acceptedAt != nil || revokedAt != nil || time.Now().After(expiresAt) {
 		return httperr.ErrInvalid
 	}
+	return s.finalizeAcceptedInvite(ctx, inviteID, workspaceID, role, seat, groupID, userID)
+}
+
+// ListMyInvites returns pending invites addressed to the current user's email —
+// this is what makes an invite visible in-app without depending on the invitee
+// having received or clicked the emailed link.
+func (s *Service) ListMyInvites(ctx context.Context, userEmail string) ([]models.MyInvite, error) {
+	rows, err := s.DB.Query(ctx, `
+		SELECT i.id, i.workspace_id, w.name, i.role, u.display_name, i.expires_at, i.created_at
+		FROM workspace_invites i
+		JOIN workspaces w ON w.id = i.workspace_id
+		LEFT JOIN users u ON u.id = i.invited_by
+		WHERE lower(i.email) = lower($1) AND i.accepted_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > now()
+		ORDER BY i.created_at DESC
+	`, userEmail)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]models.MyInvite, 0)
+	for rows.Next() {
+		var inv models.MyInvite
+		if err := rows.Scan(&inv.ID, &inv.WorkspaceID, &inv.WorkspaceName, &inv.Role, &inv.InvitedByName, &inv.ExpiresAt, &inv.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, inv)
+	}
+	return out, rows.Err()
+}
+
+// AcceptInviteByID accepts a pending invite the current user can see via
+// ListMyInvites — authorized by the invite's email matching the signed-in
+// user's own email, rather than possession of the (never-stored-in-plaintext)
+// invite token. This is what a "click to accept" button in the product itself
+// can use, as opposed to the emailed link's /invites/{token}/accept.
+func (s *Service) AcceptInviteByID(ctx context.Context, workspaceID, inviteID, userID uuid.UUID, userEmail string) error {
+	var role, seat, email string
+	var groupID *uuid.UUID
+	var expiresAt time.Time
+	var acceptedAt, revokedAt *time.Time
+	err := s.DB.QueryRow(ctx, `
+		SELECT role, group_id, seat_type, email, expires_at, accepted_at, revoked_at
+		FROM workspace_invites WHERE id = $1 AND workspace_id = $2
+	`, inviteID, workspaceID).Scan(&role, &groupID, &seat, &email, &expiresAt, &acceptedAt, &revokedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return httperr.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(email, userEmail) {
+		return httperr.ErrForbidden
+	}
+	if acceptedAt != nil || revokedAt != nil || time.Now().After(expiresAt) {
+		return httperr.ErrInvalid
+	}
+	return s.finalizeAcceptedInvite(ctx, inviteID, workspaceID, role, seat, groupID, userID)
+}
+
+func (s *Service) finalizeAcceptedInvite(ctx context.Context, inviteID, workspaceID uuid.UUID, role, seat string, groupID *uuid.UUID, userID uuid.UUID) error {
 	return withTx(ctx, s.DB, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO workspace_members (id, workspace_id, user_id, role, seat_type, status, invited_by, joined_at)
@@ -731,6 +820,11 @@ func (s *Service) DeleteDomain(ctx context.Context, workspaceID, domainID, userI
 
 const workspaceCols = `id, name, slug, description, icon, color, status, settings, owner_user_id,
 	public_sharing_enabled, guest_access_enabled, created_at, updated_at`
+
+// workspaceColsW is workspaceCols qualified with the `w` alias, for queries that join
+// workspaces against another table (e.g. workspace_members) which also has an `id` column.
+const workspaceColsW = `w.id, w.name, w.slug, w.description, w.icon, w.color, w.status, w.settings, w.owner_user_id,
+	w.public_sharing_enabled, w.guest_access_enabled, w.created_at, w.updated_at`
 
 func scanWorkspace(row pgx.Row) (models.Workspace, error) {
 	var w models.Workspace

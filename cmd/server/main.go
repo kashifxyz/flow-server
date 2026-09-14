@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"strings"
@@ -46,7 +47,13 @@ func run(args []string) error {
 		return err
 	}
 
+	proxies, badProxies := parseTrustedProxies(cfg.TrustedProxies)
+	auth.SetTrustedProxies(proxies)
+
 	log := logger.New(cfg.Env, cfg.LogLevel)
+	for _, bad := range badProxies {
+		log.Warn().Str("value", bad).Msg("ignoring invalid FLOW_TRUSTED_PROXIES entry")
+	}
 	log.Info().
 		Str("mode", cfg.Mode).
 		Str("url", cfg.URL).
@@ -124,9 +131,12 @@ func run(args []string) error {
 		Log:           log,
 		DB:            db,
 		S3:            s3Client,
+		Redis:         rdb,
 		Hub:           hub,
 		Sessions:      sessions,
 		AuthService:   authSvc,
+		Mail:          sender,
+		PublicURL:     cfg.URL,
 		SecureCookies: cfg.IsProd() || strings.HasPrefix(cfg.URL, "https://"),
 		Health: health.Module{
 			DB:    db,
@@ -184,6 +194,26 @@ func run(args []string) error {
 	}
 	log.Info().Msg("server stopped")
 	return nil
+}
+
+// parseTrustedProxies turns FLOW_TRUSTED_PROXIES entries (CIDRs, or bare IPs
+// treated as /32 or /128) into prefixes auth.clientIP will trust
+// X-Forwarded-For from. Entries that parse as neither are reported back so
+// the caller can log them, rather than silently trusting nothing or crashing
+// on a config typo.
+func parseTrustedProxies(raw []string) (prefixes []netip.Prefix, invalid []string) {
+	for _, r := range raw {
+		if p, err := netip.ParsePrefix(r); err == nil {
+			prefixes = append(prefixes, p)
+			continue
+		}
+		if addr, err := netip.ParseAddr(r); err == nil {
+			prefixes = append(prefixes, netip.PrefixFrom(addr, addr.BitLen()))
+			continue
+		}
+		invalid = append(invalid, r)
+	}
+	return prefixes, invalid
 }
 
 func connectRedis(ctx context.Context, cfg config.Config, log zerolog.Logger) (*redis.Client, error) {

@@ -30,10 +30,12 @@ import (
 	"github.com/kashifxyz/flow-server/internal/modules/webhook"
 	"github.com/kashifxyz/flow-server/internal/modules/workspace"
 	"github.com/kashifxyz/flow-server/internal/realtime"
+	"github.com/kashifxyz/flow-server/pkg/mail"
 	"github.com/rs/zerolog"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 type Deps struct {
@@ -41,9 +43,12 @@ type Deps struct {
 	Log           zerolog.Logger
 	DB            *pgxpool.Pool
 	S3            *s3.Client
+	Redis         *redis.Client
 	Hub           *realtime.Hub
 	Sessions      *auth.Sessions
 	AuthService   *auth.Service
+	Mail          mail.Sender
+	PublicURL     string
 	SecureCookies bool
 	Health        health.Module
 }
@@ -51,9 +56,9 @@ type Deps struct {
 func New(deps Deps) http.Handler {
 	mux := http.NewServeMux()
 	health.Register(mux, deps.Health)
-	authmodule.Register(mux, authmodule.Module{Auth: deps.AuthService, SecureCookies: deps.SecureCookies, Log: deps.Log})
+	authmodule.Register(mux, authmodule.Module{Auth: deps.AuthService, Redis: deps.Redis, SecureCookies: deps.SecureCookies, Log: deps.Log})
 	users.Register(mux, users.Module{DB: deps.DB, Auth: deps.AuthService, Log: deps.Log})
-	workspace.Register(mux, workspace.Module{DB: deps.DB, Log: deps.Log})
+	workspace.Register(mux, workspace.Module{DB: deps.DB, Mail: deps.Mail, PublicURL: deps.PublicURL, Log: deps.Log})
 	space.Register(mux, space.Module{DB: deps.DB, Log: deps.Log})
 	node.Register(mux, node.Module{DB: deps.DB, Log: deps.Log})
 	page.Register(mux, page.Module{DB: deps.DB, Log: deps.Log})

@@ -71,6 +71,26 @@ func PresignPutURL(ctx context.Context, client *s3.Client, bucket, key, contentT
 	return req.URL, nil
 }
 
+// HeadObject confirms an object actually exists at key and returns its real
+// size in bytes, so callers never have to trust a client-declared size for
+// storage accounting or quota enforcement.
+func HeadObject(ctx context.Context, client *s3.Client, bucket, key string) (int64, error) {
+	if client == nil {
+		return 0, fmt.Errorf("object storage is not configured")
+	}
+	out, err := client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("head object %s: %w", key, err)
+	}
+	if out.ContentLength == nil {
+		return 0, fmt.Errorf("head object %s: missing content length", key)
+	}
+	return *out.ContentLength, nil
+}
+
 // PresignGetURL returns a time-limited URL the client can GET the object body from directly.
 func PresignGetURL(ctx context.Context, client *s3.Client, bucket, key string, ttl time.Duration) (string, error) {
 	if client == nil {

@@ -165,6 +165,14 @@ func (s store) revokeUserSessions(ctx context.Context, userID uuid.UUID, reason 
 	return err
 }
 
+func (s store) revokeUserSessionsExcept(ctx context.Context, userID, exceptSessionID uuid.UUID, reason string) error {
+	_, err := s.db.Exec(ctx, `
+		UPDATE sessions SET revoked_at = now(), revoke_reason = $3
+		WHERE user_id = $1 AND id <> $2 AND revoked_at IS NULL
+	`, userID, exceptSessionID, reason)
+	return err
+}
+
 func (s store) recordLoginSuccess(ctx context.Context, userID uuid.UUID, ip string) error {
 	_, err := s.db.Exec(ctx, `
 		UPDATE users SET
@@ -264,8 +272,8 @@ func (s store) consumeAuthToken(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-func (s store) revokeAuthTokens(ctx context.Context, userID uuid.UUID, purpose string) error {
-	_, err := s.db.Exec(ctx, `
+func (s store) revokeAuthTokens(ctx context.Context, q execer, userID uuid.UUID, purpose string) error {
+	_, err := q.Exec(ctx, `
 		UPDATE auth_tokens SET revoked_at = now()
 		WHERE user_id = $1 AND purpose = $2 AND consumed_at IS NULL AND revoked_at IS NULL
 	`, userID, purpose)

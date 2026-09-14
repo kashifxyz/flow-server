@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
+	_ "time/tzdata" // embed the IANA tzdata so time.LoadLocation works even without an OS copy
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -11,6 +14,13 @@ import (
 	"github.com/kashifxyz/flow-server/internal/auth"
 	"github.com/kashifxyz/flow-server/internal/modules/users/models"
 	"github.com/kashifxyz/flow-server/internal/utils/httperr"
+)
+
+const (
+	maxBioLen      = 2000
+	maxLocaleLen   = 35 // RFC 5646 caps a full BCP-47 language tag at 35 chars
+	maxTimezoneLen = 100
+	maxFormatLen   = 40
 )
 
 type Service struct {
@@ -26,6 +36,21 @@ var themes = map[string]bool{"system": true, "light": true, "dark": true, "amole
 
 const profileCols = `id, email, display_name, given_name, family_name, username, locale, timezone, week_starts_on, date_format, time_format, theme, bio, avatar_object_key`
 
+func (s *Service) GetProfile(ctx context.Context, userID uuid.UUID) (models.Profile, error) {
+	p, err := scanProfile(s.DB.QueryRow(ctx, `SELECT `+profileCols+` FROM users WHERE id = $1 AND deleted_at IS NULL`, userID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.Profile{}, httperr.ErrNotFound
+	}
+	return p, err
+}
+
+func (s *Service) ChangePassword(ctx context.Context, userID, sessionID uuid.UUID, in models.ChangePasswordRequest, meta auth.RequestMeta) error {
+	if in.CurrentPassword == "" || in.NewPassword == "" {
+		return httperr.ErrInvalid
+	}
+	return s.Auth.ChangePassword(ctx, userID, sessionID, in.CurrentPassword, in.NewPassword, meta)
+}
+
 func (s *Service) UpdateProfile(ctx context.Context, userID uuid.UUID, in models.UpdateProfileRequest) (models.Profile, error) {
 	if in.Theme != nil && !themes[*in.Theme] {
 		return models.Profile{}, httperr.ErrInvalid
@@ -39,6 +64,67 @@ func (s *Service) UpdateProfile(ctx context.Context, userID uuid.UUID, in models
 			return models.Profile{}, httperr.ErrInvalid
 		}
 		in.Username = &trimmed
+	}
+	if in.DisplayName != nil {
+		trimmed := strings.TrimSpace(*in.DisplayName)
+		if utf8.RuneCountInString(trimmed) > auth.MaxNameLen {
+			return models.Profile{}, httperr.ErrInvalid
+		}
+		in.DisplayName = &trimmed
+	}
+	if in.GivenName != nil {
+		trimmed := strings.TrimSpace(*in.GivenName)
+		if utf8.RuneCountInString(trimmed) > auth.MaxNameLen {
+			return models.Profile{}, httperr.ErrInvalid
+		}
+		in.GivenName = &trimmed
+	}
+	if in.FamilyName != nil {
+		trimmed := strings.TrimSpace(*in.FamilyName)
+		if utf8.RuneCountInString(trimmed) > auth.MaxNameLen {
+			return models.Profile{}, httperr.ErrInvalid
+		}
+		in.FamilyName = &trimmed
+	}
+	if in.Bio != nil {
+		trimmed := strings.TrimSpace(*in.Bio)
+		if utf8.RuneCountInString(trimmed) > maxBioLen {
+			return models.Profile{}, httperr.ErrInvalid
+		}
+		in.Bio = &trimmed
+	}
+	if in.Locale != nil {
+		trimmed := strings.TrimSpace(*in.Locale)
+		if utf8.RuneCountInString(trimmed) > maxLocaleLen {
+			return models.Profile{}, httperr.ErrInvalid
+		}
+		in.Locale = &trimmed
+	}
+	if in.Timezone != nil {
+		trimmed := strings.TrimSpace(*in.Timezone)
+		if utf8.RuneCountInString(trimmed) > maxTimezoneLen {
+			return models.Profile{}, httperr.ErrInvalid
+		}
+		if trimmed != "" {
+			if _, err := time.LoadLocation(trimmed); err != nil {
+				return models.Profile{}, httperr.ErrInvalid
+			}
+		}
+		in.Timezone = &trimmed
+	}
+	if in.DateFormat != nil {
+		trimmed := strings.TrimSpace(*in.DateFormat)
+		if utf8.RuneCountInString(trimmed) > maxFormatLen {
+			return models.Profile{}, httperr.ErrInvalid
+		}
+		in.DateFormat = &trimmed
+	}
+	if in.TimeFormat != nil {
+		trimmed := strings.TrimSpace(*in.TimeFormat)
+		if utf8.RuneCountInString(trimmed) > maxFormatLen {
+			return models.Profile{}, httperr.ErrInvalid
+		}
+		in.TimeFormat = &trimmed
 	}
 	p, err := scanProfile(s.DB.QueryRow(ctx, `
 		UPDATE users SET

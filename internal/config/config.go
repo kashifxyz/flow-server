@@ -27,6 +27,7 @@ type Config struct {
 	LogLevel       string
 	SessionSecret  string
 	CORSOrigins    []string
+	TrustedProxies []string
 	ShutdownWait   time.Duration
 	ReadTimeout    time.Duration
 	WriteTimeout   time.Duration
@@ -74,6 +75,7 @@ func Load() (Config, error) {
 		RedisURL:       envOr("FLOW_REDIS_URL", "redis://127.0.0.1:6379"),
 		LogLevel:       envOr("FLOW_LOG_LEVEL", "info"),
 		SessionSecret:  os.Getenv("FLOW_SESSION_SECRET"),
+		TrustedProxies: splitCSV(envOr("FLOW_TRUSTED_PROXIES", "")),
 		ShutdownWait:   durationOr("FLOW_SHUTDOWN_TIMEOUT", 15*time.Second),
 		ReadTimeout:    durationOr("FLOW_HTTP_READ_TIMEOUT", 10*time.Second),
 		WriteTimeout:   durationOr("FLOW_HTTP_WRITE_TIMEOUT", 30*time.Second),

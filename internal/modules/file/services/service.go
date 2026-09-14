@@ -85,12 +85,11 @@ func (s *Service) CreateUpload(ctx context.Context, workspaceID, userID uuid.UUI
 func (s *Service) CompleteUpload(ctx context.Context, sessionID, userID uuid.UUID, in models.CompleteUploadRequest) (models.File, error) {
 	var workspaceID, createdBy uuid.UUID
 	var objectKey, mimeType, status string
-	var expectedSize int64
 	var expiresAt time.Time
 	err := s.DB.QueryRow(ctx, `
-		SELECT workspace_id, created_by, object_key, mime_type, expected_size_bytes, status, expires_at
+		SELECT workspace_id, created_by, object_key, mime_type, status, expires_at
 		FROM file_upload_sessions WHERE id = $1
-	`, sessionID).Scan(&workspaceID, &createdBy, &objectKey, &mimeType, &expectedSize, &status, &expiresAt)
+	`, sessionID).Scan(&workspaceID, &createdBy, &objectKey, &mimeType, &status, &expiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return models.File{}, httperr.ErrNotFound
 	}
@@ -101,6 +100,12 @@ func (s *Service) CompleteUpload(ctx context.Context, sessionID, userID uuid.UUI
 		return models.File{}, httperr.ErrForbidden
 	}
 	if status != "open" || time.Now().After(expiresAt) {
+		return models.File{}, httperr.ErrInvalid
+	}
+	// Never trust the client-declared expected_size_bytes for accounting: confirm
+	// the object was actually uploaded and use S3's own record of its size.
+	actualSize, err := storage.HeadObject(ctx, s.S3, s.Bucket, objectKey)
+	if err != nil {
 		return models.File{}, httperr.ErrInvalid
 	}
 	originalName := path.Base(objectKey)
@@ -118,7 +123,7 @@ func (s *Service) CompleteUpload(ctx context.Context, sessionID, userID uuid.UUI
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO files (id, workspace_id, uploader_id, bucket, object_key, original_name, mime_type, size_bytes, checksum, etag, status)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'ready')
-		`, n.ID, workspaceID, userID, s.Bucket, objectKey, originalName, mimeType, expectedSize,
+		`, n.ID, workspaceID, userID, s.Bucket, objectKey, originalName, mimeType, actualSize,
 			nullIfEmpty(in.Checksum), nullIfEmpty(in.Etag)); err != nil {
 			return err
 		}
@@ -129,12 +134,12 @@ func (s *Service) CompleteUpload(ctx context.Context, sessionID, userID uuid.UUI
 		}
 		if _, err := tx.Exec(ctx, `
 			UPDATE workspaces SET storage_used_bytes = storage_used_bytes + $2, updated_at = now() WHERE id = $1
-		`, workspaceID, expectedSize); err != nil {
+		`, workspaceID, actualSize); err != nil {
 			return err
 		}
 		f = models.File{
 			ID: n.ID.String(), WorkspaceID: workspaceID.String(), OriginalName: originalName,
-			MimeType: mimeType, SizeBytes: expectedSize, Status: "ready", CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt,
+			MimeType: mimeType, SizeBytes: actualSize, Status: "ready", CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt,
 		}
 		return nil
 	})

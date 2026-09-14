@@ -156,6 +156,15 @@ paths:
         "400": { description: Invalid/expired token, or password reused }
 
   /users/me:
+    get:
+      tags: [users]
+      summary: Get the current user's full profile
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Profile" }
     patch:
       tags: [users]
       summary: Update the current user's profile
@@ -171,6 +180,24 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Profile" }
         "409": { description: Username already taken }
+
+  /users/me/password:
+    post:
+      tags: [users]
+      summary: Change the current user's password (requires the current password; keeps this session, revokes all others)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChangePasswordRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OKResponse" }
+        "400": { description: Invalid request, weak/reused password }
+        "401": { description: Current password incorrect }
 
   /users/me/preferences:
     get:
@@ -416,10 +443,43 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /workspaces/{workspaceID}/invites/{inviteID}/accept:
+    post:
+      tags: [workspaces]
+      summary: Accept a pending invite addressed to the current user's email (no token needed — for the in-app "you've been invited" banner)
+      parameters:
+        - $ref: "#/components/parameters/workspaceID"
+        - name: inviteID
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OKResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /invites/mine:
+    get:
+      tags: [workspaces]
+      summary: List pending invites addressed to the current user's email, across all workspaces
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MyInvite" }
+
   /invites/{token}/accept:
     post:
       tags: [workspaces]
-      summary: Accept an invite as the current user
+      summary: Accept an invite as the current user, via the emailed link's token
       parameters:
         - name: token
           in: path
@@ -2663,6 +2723,11 @@ components:
 
     User:
       type: object
+      required:
+        - id
+        - email
+        - display_name
+        - email_verified
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
@@ -2705,6 +2770,19 @@ components:
 
     Profile:
       type: object
+      required:
+        - id
+        - email
+        - display_name
+        - given_name
+        - family_name
+        - locale
+        - timezone
+        - week_starts_on
+        - date_format
+        - time_format
+        - theme
+        - bio
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
@@ -2720,6 +2798,13 @@ components:
         theme: { type: string, enum: [system, light, dark, amoled] }
         bio: { type: string }
         avatar_object_key: { type: string, nullable: true }
+
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password: { type: string }
+        new_password: { type: string, minLength: 10, maxLength: 128 }
 
     UpdateProfileRequest:
       type: object
@@ -2757,6 +2842,15 @@ components:
 
     Session:
       type: object
+      required:
+        - id
+        - user_agent
+        - ip
+        - country
+        - created_at
+        - last_seen_at
+        - expires_at
+        - current
       properties:
         id: { type: string, format: uuid }
         user_agent: { type: string }
@@ -2826,6 +2920,15 @@ components:
 
     Member:
       type: object
+      required:
+        - id
+        - user_id
+        - email
+        - display_name
+        - role
+        - seat_type
+        - status
+        - created_at
       properties:
         id: { type: string, format: uuid }
         user_id: { type: string, format: uuid }
@@ -2854,6 +2957,13 @@ components:
 
     Invite:
       type: object
+      required:
+        - id
+        - email
+        - role
+        - seat_type
+        - expires_at
+        - created_at
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
@@ -2863,6 +2973,24 @@ components:
         expires_at: { type: string, format: date-time }
         accepted_at: { type: string, format: date-time, nullable: true }
         revoked_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    MyInvite:
+      type: object
+      required:
+        - id
+        - workspace_id
+        - workspace_name
+        - role
+        - expires_at
+        - created_at
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        workspace_name: { type: string }
+        role: { type: string }
+        invited_by_name: { type: string, nullable: true }
+        expires_at: { type: string, format: date-time }
         created_at: { type: string, format: date-time }
 
     CreateInviteRequest:
@@ -2876,6 +3004,12 @@ components:
 
     Role:
       type: object
+      required:
+        - id
+        - name
+        - description
+        - is_system
+        - created_at
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
@@ -3023,7 +3157,7 @@ components:
         description: { type: string }
         icon: { type: string, nullable: true }
         rank: { type: string }
-        props: { type: object }
+        props: { type: object, additionalProperties: true }
         version: { type: integer, format: int64 }
         created_by: { type: string, format: uuid, nullable: true }
         archived_at: { type: string, format: date-time, nullable: true }
@@ -3037,7 +3171,7 @@ components:
         title: { type: string }
         description: { type: string }
         icon: { type: string }
-        props: { type: object }
+        props: { type: object, additionalProperties: true }
         rank: { type: string }
         space_id: { type: string, format: uuid }
 
@@ -3104,7 +3238,7 @@ components:
         description: { type: string }
         icon: { type: string, nullable: true }
         rank: { type: string }
-        props: { type: object }
+        props: { type: object, additionalProperties: true }
         version: { type: integer, format: int64 }
         archived_at: { type: string, format: date-time, nullable: true }
         created_at: { type: string, format: date-time }
@@ -3118,7 +3252,7 @@ components:
         parent_id: { type: string, format: uuid }
         space_id: { type: string, format: uuid }
         icon: { type: string }
-        props: { type: object }
+        props: { type: object, additionalProperties: true }
 
     UpdatePageRequest:
       type: object
@@ -3126,7 +3260,7 @@ components:
         title: { type: string }
         description: { type: string }
         icon: { type: string }
-        props: { type: object }
+        props: { type: object, additionalProperties: true }
 
     BlockFlavour:
       type: object
@@ -3144,7 +3278,7 @@ components:
         page_id: { type: string, format: uuid }
         flavour: { type: string, nullable: true }
         rank: { type: string }
-        props: { type: object }
+        props: { type: object, additionalProperties: true }
         version: { type: integer, format: int64 }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
@@ -3155,13 +3289,13 @@ components:
       properties:
         flavour: { type: string }
         rank: { type: string }
-        props: { type: object }
+        props: { type: object, additionalProperties: true }
 
     UpdateBlockRequest:
       type: object
       properties:
         flavour: { type: string }
-        props: { type: object }
+        props: { type: object, additionalProperties: true }
         rank: { type: string }
 
     ReorderBlocksRequest:
@@ -3396,7 +3530,7 @@ components:
         title: { type: string }
         description: { type: string }
         icon: { type: string, nullable: true }
-        props: { type: object }
+        props: { type: object, additionalProperties: true }
         version: { type: integer, format: int64 }
         archived_at: { type: string, format: date-time, nullable: true }
         created_at: { type: string, format: date-time }
@@ -3410,7 +3544,7 @@ components:
         description: { type: string }
         space_id: { type: string, format: uuid }
         icon: { type: string }
-        props: { type: object }
+        props: { type: object, additionalProperties: true }
 
     UpdateProjectRequest:
       type: object
@@ -3418,7 +3552,7 @@ components:
         title: { type: string }
         description: { type: string }
         icon: { type: string }
-        props: { type: object }
+        props: { type: object, additionalProperties: true }
 
     Task:
       type: object
@@ -3446,14 +3580,14 @@ components:
         title: { type: string }
         description: { type: string }
         rank: { type: string }
-        props: { type: object }
+        props: { type: object, additionalProperties: true }
 
     UpdateTaskRequest:
       type: object
       properties:
         title: { type: string }
         description: { type: string }
-        props: { type: object }
+        props: { type: object, additionalProperties: true }
         rank: { type: string }
 
     MoveTaskRequest:
@@ -3470,7 +3604,7 @@ components:
         space_id: { type: string, format: uuid, nullable: true }
         title: { type: string }
         description: { type: string }
-        props: { type: object }
+        props: { type: object, additionalProperties: true }
         version: { type: integer, format: int64 }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
